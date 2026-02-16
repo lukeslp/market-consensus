@@ -159,6 +159,29 @@ SQLite configured with **WAL mode** for concurrent reads.
 
 Uses shared library providers via `ProviderFactory.get_provider()`.
 
+### Implementation Status
+
+**✅ Implemented**:
+- Flask application factory with blueprints
+- ForesightDB class (49 methods, full CRUD)
+- StockService (yfinance integration)
+- PredictionService (LLM provider wrappers)
+- Error handlers, logging, configuration
+- CSS design system (glassmorphic dark theme)
+- Test suite (`test_db.py` - all passing)
+
+**❌ Not Implemented**:
+- Database integration (routes use wrong interface)
+- Background worker for prediction cycles
+- SSE event streaming (only heartbeat placeholder)
+- Frontend D3.js visualizations (HTML/CSS scaffold only)
+- LLM workflow execution (services exist but not called)
+
+**📝 Scaffolded** (structure exists, needs implementation):
+- API endpoints (defined but will crash due to DB issue)
+- Frontend files (`static/js/grid.js`, `detail.js`, `sidebar.js`)
+- SSE streaming endpoint (`/api/stream`)
+
 ## API Endpoints
 
 ### REST Endpoints
