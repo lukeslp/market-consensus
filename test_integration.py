@@ -106,7 +106,7 @@ def test_worker_initialization():
     # Just verify it can be created
 
     # Clean up
-    db_path = Path(config.DB_PATH)
+    db_path = Path(config['DB_PATH'])
     if db_path.exists():
         db_path.unlink()
 
@@ -166,10 +166,16 @@ def test_services():
         print(f"⚠ Market status check failed (may be network issue): {e}")
 
     # Test PredictionService initialization
-    config = DevelopmentConfig()
+    config = {
+        'PROVIDERS': {
+            'discovery': 'xai',
+            'prediction': 'anthropic',
+            'synthesis': 'gemini'
+        }
+    }
     prediction_service = PredictionService(config)
     print(f"✓ PredictionService initialized")
-    print(f"  Providers: {list(config.PROVIDERS.keys())}")
+    print(f"  Providers: {list(config['PROVIDERS'].keys())}")
 
     print("✅ Services test passed!")
 
