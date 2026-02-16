@@ -121,44 +121,78 @@ def stream():
     """SSE endpoint for real-time prediction updates"""
 
     def generate():
-        """Generate SSE events"""
-        # Set SSE headers
+        """Generate SSE events from database event queue"""
+        db = get_db()
+        last_event_id = 0
+
+        # Set SSE retry interval
         yield f"retry: {current_app.config['SSE_RETRY']}\n\n"
 
         # Send initial connection event
         yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})}\n\n"
 
-        # This is a placeholder - actual implementation would:
-        # 1. Listen to a queue/channel for prediction events
-        # 2. Stream updates as they happen
-        # 3. Handle client disconnection gracefully
-
-        # For now, send a heartbeat every 30 seconds
+        # Stream events from database
         last_heartbeat = time.time()
+        heartbeat_interval = 30  # seconds
+
         while True:
             current_time = time.time()
 
-            if current_time - last_heartbeat >= 30:
-                yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
-                last_heartbeat = current_time
+            try:
+                # Get pending events from database
+                events = db.get_pending_events(since_id=last_event_id, limit=10)
 
-            time.sleep(1)
+                for event in events:
+                    # Update last seen event ID
+                    if event['id'] > last_event_id:
+                        last_event_id = event['id']
 
-            # TODO: Check for new predictions and yield them
-            # Example event structure:
-            # {
-            #     'type': 'prediction',
-            #     'cycle_id': 1,
-            #     'stock': {'symbol': 'AAPL', 'name': 'Apple Inc.'},
-            #     'prediction': {
-            #         'provider': 'anthropic',
-            #         'prediction': 'bullish',
-            #         'confidence': 0.75,
-            #         'reasoning': '...'
-            #     }
-            # }
+                    # Mark event as processed
+                    db.mark_event_processed(event['id'])
 
-    return Response(generate(), mimetype='text/event-stream')
+                    # Format and yield the event
+                    event_data = {
+                        'id': event['id'],
+                        'type': event['event_type'],
+                        'data': json.loads(event['data']) if event['data'] else {},
+                        'timestamp': event['created_at']
+                    }
+
+                    yield f"data: {json.dumps(event_data)}\n\n"
+
+                # Send heartbeat if needed
+                if current_time - last_heartbeat >= heartbeat_interval:
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
+                    last_heartbeat = current_time
+
+                # Sleep briefly before checking for more events
+                time.sleep(1)
+
+            except GeneratorExit:
+                # Client disconnected
+                current_app.logger.info('SSE client disconnected')
+                break
+
+            except Exception as e:
+                current_app.logger.error(f'SSE stream error: {e}')
+                # Send error event
+                error_data = {
+                    'type': 'error',
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+                break
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',  # Disable nginx buffering
+            'Connection': 'keep-alive'
+        }
+    )
 
 
 @api_bp.route('/cycle/start', methods=['POST'])

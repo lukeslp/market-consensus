@@ -13,14 +13,20 @@ from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
 from logging.handlers import RotatingFileHandler
+import atexit
 
 from app.config import Config
 from app.database import init_db, close_db
 from app.errors import register_error_handlers
 
+# Global worker instance
+_worker = None
+
 
 def create_app(config_class=Config):
     """Application factory"""
+    global _worker
+
     app = Flask(__name__, static_folder='../static')
     app.config.from_object(config_class)
 
@@ -46,9 +52,28 @@ def create_app(config_class=Config):
     # Database teardown
     app.teardown_appcontext(close_db)
 
+    # Initialize and start background worker
+    from app.worker import PredictionWorker
+    _worker = PredictionWorker(app.config)
+    _worker.start()
+    app.logger.info('Background prediction worker started')
+
+    # Store worker reference in app for access from routes
+    app.worker = _worker
+
+    # Register shutdown handler
+    atexit.register(lambda: shutdown_worker(_worker, app.logger))
+
     app.logger.info(f'Foresight initialized on port {app.config["PORT"]}')
 
     return app
+
+
+def shutdown_worker(worker, logger):
+    """Shutdown worker gracefully"""
+    if worker and worker.is_alive():
+        logger.info('Shutting down prediction worker...')
+        worker.stop()
 
 
 def setup_logging(app):
@@ -67,3 +92,8 @@ def setup_logging(app):
 
     app.logger.setLevel(logging.INFO)
     app.logger.info('Foresight startup')
+
+
+def get_worker():
+    """Get global worker instance"""
+    return _worker
