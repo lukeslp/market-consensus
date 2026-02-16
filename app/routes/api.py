@@ -166,28 +166,17 @@ def start_cycle():
     """Manually trigger a new prediction cycle"""
     db = get_db()
 
-    # Check if there's already a running cycle
-    running = db.execute('''
-        SELECT id FROM cycles
-        WHERE status = 'running'
-        LIMIT 1
-    ''').fetchone()
+    # Check if there's already an active cycle
+    current_cycle = db.get_current_cycle()
 
-    if running:
+    if current_cycle:
         return jsonify({
             'error': 'Cycle already running',
-            'cycle_id': running['id']
+            'cycle_id': current_cycle['id']
         }), 409
 
     # Create new cycle
-    cursor = db.execute('''
-        INSERT INTO cycles (start_time, status)
-        VALUES (?, 'running')
-    ''', (datetime.now(),))
-
-    db.commit()
-
-    cycle_id = cursor.lastrowid
+    cycle_id = db.create_cycle()
 
     # TODO: Trigger background prediction worker
     current_app.logger.info(f'Started prediction cycle {cycle_id}')
@@ -204,26 +193,31 @@ def stop_cycle(cycle_id):
     """Manually stop a prediction cycle"""
     db = get_db()
 
-    cycle = db.execute('''
-        SELECT * FROM cycles WHERE id = ? AND status = 'running'
-    ''', (cycle_id,)).fetchone()
+    # Get cycle to verify it exists and is active
+    cycle = db.get_cycle(cycle_id)
 
     if not cycle:
         return jsonify({
-            'error': 'Cycle not found or already stopped'
+            'error': 'Cycle not found'
         }), 404
 
-    db.execute('''
-        UPDATE cycles
-        SET status = 'stopped', end_time = ?
-        WHERE id = ?
-    ''', (datetime.now(), cycle_id))
+    if cycle['status'] != 'active':
+        return jsonify({
+            'error': 'Cycle is not active',
+            'current_status': cycle['status']
+        }), 400
 
-    db.commit()
+    # Complete the cycle
+    success = db.complete_cycle(cycle_id)
+
+    if not success:
+        return jsonify({
+            'error': 'Failed to stop cycle'
+        }), 500
 
     current_app.logger.info(f'Stopped prediction cycle {cycle_id}')
 
     return jsonify({
-        'status': 'stopped',
+        'status': 'completed',
         'cycle_id': cycle_id
     })

@@ -19,9 +19,10 @@ def health():
     from app.database import get_db
 
     try:
-        # Check database connectivity
+        # Check database connectivity using ForesightDB methods
         db = get_db()
-        db.execute('SELECT 1').fetchone()
+        # Try to get dashboard summary to verify DB is working
+        db.get_dashboard_summary()
 
         return {
             'status': 'healthy',
