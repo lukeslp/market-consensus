@@ -1,0 +1,865 @@
+openapi: 3.0.3
+info:
+  title: Foresight Stock Prediction API
+  description: |
+    Real-time stock prediction dashboard using multi-provider language models.
+    Provides stock discovery, predictions, and accuracy tracking.
+  version: 1.0.0
+  contact:
+    name: Luke Steuber
+    email: luke@lukesteuber.com
+  license:
+    name: MIT
+
+servers:
+  - url: https://dr.eamer.dev/foresight/api
+    description: Production server
+  - url: http://localhost:5062/api
+    description: Local development server
+
+tags:
+  - name: Cycles
+    description: Prediction cycle management
+  - name: Stocks
+    description: Stock information and predictions
+  - name: Statistics
+    description: Accuracy metrics and analytics
+  - name: Streaming
+    description: Real-time updates via Server-Sent Events
+  - name: Health
+    description: Service health monitoring
+
+paths:
+  /current:
+    get:
+      summary: Get current prediction cycle
+      description: Returns the most recent prediction cycle with all stock predictions, confidence scores, and current prices.
+      operationId: getCurrentCycle
+      tags:
+        - Cycles
+      responses:
+        '200':
+          description: Current cycle data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cycle'
+              example:
+                id: 42
+                created_at: "2026-02-16T14:30:00Z"
+                cycle_number: 42
+                status: "active"
+                stocks: [
+                  {
+                    symbol: "AAPL",
+                    current_price: 185.23,
+                    predicted_direction: "up",
+                    confidence: 0.78,
+                    reasoning: "Strong quarterly earnings, new product launch momentum"
+                  },
+                  {
+                    symbol: "TSLA",
+                    current_price: 245.67,
+                    predicted_direction: "down",
+                    confidence: 0.62,
+                    reasoning: "Production concerns, regulatory headwinds"
+                  }
+                ]
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /history:
+    get:
+      summary: Get historical prediction cycles
+      description: Returns paginated list of past prediction cycles with outcomes and accuracy.
+      operationId: getHistory
+      tags:
+        - Cycles
+      parameters:
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        - name: status
+          in: query
+          description: Filter by cycle status
+          schema:
+            type: string
+            enum: [active, completed, verified]
+          example: completed
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          example: desc
+      responses:
+        '200':
+          description: Paginated history data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCycles'
+              example:
+                data: [
+                  {
+                    id: 41,
+                    created_at: "2026-02-16T14:20:00Z",
+                    cycle_number: 41,
+                    status: "completed",
+                    accuracy: 0.80,
+                    stock_count: 5
+                  }
+                ]
+                pagination:
+                  page: 1
+                  limit: 20
+                  total: 41
+                  total_pages: 3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stock/{symbol}:
+    get:
+      summary: Get detailed stock prediction history
+      description: Returns prediction history, accuracy metrics, and current data for a specific stock symbol.
+      operationId: getStockDetail
+      tags:
+        - Stocks
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: Stock ticker symbol (uppercase)
+          schema:
+            type: string
+            pattern: '^[A-Z]{1,5}$'
+          example: AAPL
+        - name: cycles
+          in: query
+          description: Number of recent cycles to include
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          example: 10
+      responses:
+        '200':
+          description: Stock detail with prediction history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockDetail'
+              example:
+                symbol: "AAPL"
+                current_price: 185.23
+                accuracy: 0.75
+                prediction_count: 10
+                predictions: [
+                  {
+                    cycle_id: 42,
+                    cycle_number: 42,
+                    created_at: "2026-02-16T14:30:00Z",
+                    predicted_direction: "up",
+                    confidence: 0.78,
+                    start_price: 183.50,
+                    end_price: null,
+                    actual_direction: null,
+                    correct: null
+                  }
+                ]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stats:
+    get:
+      summary: Get accuracy statistics and analytics
+      description: Returns overall accuracy metrics, per-provider performance, and trending analytics.
+      operationId: getStats
+      tags:
+        - Statistics
+      parameters:
+        - name: timeframe
+          in: query
+          description: Timeframe for statistics
+          schema:
+            type: string
+            enum: [24h, 7d, 30d, all]
+            default: all
+          example: 7d
+      responses:
+        '200':
+          description: Accuracy statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Statistics'
+              example:
+                overall:
+                  total_predictions: 210
+                  correct_predictions: 157
+                  accuracy: 0.748
+                  total_cycles: 42
+                by_provider:
+                  discovery:
+                    provider: "xai"
+                    total_discoveries: 42
+                  prediction:
+                    provider: "anthropic"
+                    total_predictions: 210
+                    correct: 157
+                    accuracy: 0.748
+                  synthesis:
+                    provider: "gemini"
+                    avg_confidence: 0.72
+                by_direction:
+                  up:
+                    total: 118
+                    correct: 92
+                    accuracy: 0.780
+                  down:
+                    total: 92
+                    correct: 65
+                    accuracy: 0.707
+                top_stocks: [
+                  {
+                    symbol: "AAPL",
+                    predictions: 10,
+                    accuracy: 0.90
+                  }
+                ]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stream:
+    get:
+      summary: Server-Sent Events stream for real-time updates
+      description: |
+        Opens a Server-Sent Events connection for real-time prediction updates.
+        Emits events when new cycles start, predictions are made, or prices are updated.
+      operationId: getEventStream
+      tags:
+        - Streaming
+      parameters:
+        - name: event_types
+          in: query
+          description: Comma-separated event types to subscribe to
+          schema:
+            type: string
+            default: "all"
+          example: "cycle_start,prediction,price_update"
+      responses:
+        '200':
+          description: SSE stream connection
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+              examples:
+                cycle_start:
+                  value: |
+                    event: cycle_start
+                    data: {"cycle_id": 43, "cycle_number": 43, "timestamp": "2026-02-16T14:40:00Z"}
+
+                prediction:
+                  value: |
+                    event: prediction
+                    data: {"cycle_id": 43, "symbol": "MSFT", "direction": "up", "confidence": 0.82}
+
+                price_update:
+                  value: |
+                    event: price_update
+                    data: {"symbol": "AAPL", "price": 186.45, "change": 0.66}
+
+                cycle_complete:
+                  value: |
+                    event: cycle_complete
+                    data: {"cycle_id": 42, "accuracy": 0.80, "timestamp": "2026-02-16T14:35:00Z"}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /health:
+    get:
+      summary: Service health check
+      description: Returns service health status and component availability.
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: "healthy"
+                service: "foresight"
+                version: "1.0.0"
+                timestamp: "2026-02-16T14:30:00Z"
+                components:
+                  database: "healthy"
+                  worker: "healthy"
+                  providers:
+                    xai: "healthy"
+                    anthropic: "healthy"
+                    gemini: "healthy"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: "unhealthy"
+                service: "foresight"
+                version: "1.0.0"
+                timestamp: "2026-02-16T14:30:00Z"
+                components:
+                  database: "healthy"
+                  worker: "degraded"
+                  providers:
+                    xai: "unhealthy"
+                    anthropic: "healthy"
+                    gemini: "healthy"
+
+components:
+  schemas:
+    Cycle:
+      type: object
+      description: A complete prediction cycle
+      required:
+        - id
+        - created_at
+        - cycle_number
+        - status
+        - stocks
+      properties:
+        id:
+          type: integer
+          description: Unique cycle identifier
+          example: 42
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2026-02-16T14:30:00Z"
+        cycle_number:
+          type: integer
+          description: Sequential cycle number
+          example: 42
+        status:
+          type: string
+          enum: [active, completed, verified]
+          description: Cycle status
+          example: active
+        stocks:
+          type: array
+          description: Stock predictions in this cycle
+          items:
+            $ref: '#/components/schemas/Prediction'
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When cycle completed
+          example: "2026-02-16T14:40:00Z"
+        accuracy:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: Cycle accuracy (0-1), null until verified
+          example: 0.80
+
+    Prediction:
+      type: object
+      description: A single stock prediction
+      required:
+        - symbol
+        - current_price
+        - predicted_direction
+        - confidence
+        - reasoning
+      properties:
+        symbol:
+          type: string
+          pattern: '^[A-Z]{1,5}$'
+          description: Stock ticker symbol
+          example: "AAPL"
+        current_price:
+          type: number
+          format: float
+          description: Current stock price (USD)
+          example: 185.23
+        predicted_direction:
+          type: string
+          enum: [up, down]
+          description: Predicted price direction
+          example: "up"
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Prediction confidence (0-1)
+          example: 0.78
+        reasoning:
+          type: string
+          description: LLM reasoning for prediction
+          example: "Strong quarterly earnings, new product launch momentum"
+        start_price:
+          type: number
+          format: float
+          nullable: true
+          description: Price at cycle start
+          example: 183.50
+        end_price:
+          type: number
+          format: float
+          nullable: true
+          description: Price at cycle end
+          example: 186.75
+        actual_direction:
+          type: string
+          enum: [up, down]
+          nullable: true
+          description: Actual direction after cycle
+          example: "up"
+        correct:
+          type: boolean
+          nullable: true
+          description: Whether prediction was correct
+          example: true
+
+    StockDetail:
+      type: object
+      description: Detailed stock information with prediction history
+      required:
+        - symbol
+        - current_price
+        - accuracy
+        - prediction_count
+        - predictions
+      properties:
+        symbol:
+          type: string
+          pattern: '^[A-Z]{1,5}$'
+          description: Stock ticker symbol
+          example: "AAPL"
+        current_price:
+          type: number
+          format: float
+          description: Current stock price (USD)
+          example: 185.23
+        accuracy:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Overall accuracy for this stock
+          example: 0.75
+        prediction_count:
+          type: integer
+          description: Total predictions made
+          example: 10
+        predictions:
+          type: array
+          description: Historical predictions
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Prediction'
+              - type: object
+                properties:
+                  cycle_id:
+                    type: integer
+                    example: 42
+                  cycle_number:
+                    type: integer
+                    example: 42
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: "2026-02-16T14:30:00Z"
+
+    PaginatedCycles:
+      type: object
+      description: Paginated list of cycles
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Cycle'
+              - type: object
+                properties:
+                  stock_count:
+                    type: integer
+                    description: Number of stocks in cycle
+                    example: 5
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      description: Pagination metadata
+      required:
+        - page
+        - limit
+        - total
+        - total_pages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          minimum: 1
+          description: Results per page
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          description: Total number of results
+          example: 41
+        total_pages:
+          type: integer
+          minimum: 0
+          description: Total number of pages
+          example: 3
+
+    Statistics:
+      type: object
+      description: Accuracy statistics and analytics
+      required:
+        - overall
+        - by_provider
+        - by_direction
+        - top_stocks
+      properties:
+        overall:
+          type: object
+          description: Overall statistics
+          required:
+            - total_predictions
+            - correct_predictions
+            - accuracy
+            - total_cycles
+          properties:
+            total_predictions:
+              type: integer
+              example: 210
+            correct_predictions:
+              type: integer
+              example: 157
+            accuracy:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              example: 0.748
+            total_cycles:
+              type: integer
+              example: 42
+        by_provider:
+          type: object
+          description: Performance by LLM provider
+          properties:
+            discovery:
+              $ref: '#/components/schemas/ProviderStats'
+            prediction:
+              $ref: '#/components/schemas/ProviderStats'
+            synthesis:
+              $ref: '#/components/schemas/ProviderStats'
+        by_direction:
+          type: object
+          description: Accuracy by prediction direction
+          properties:
+            up:
+              $ref: '#/components/schemas/DirectionStats'
+            down:
+              $ref: '#/components/schemas/DirectionStats'
+        top_stocks:
+          type: array
+          description: Best performing stocks
+          items:
+            type: object
+            required:
+              - symbol
+              - predictions
+              - accuracy
+            properties:
+              symbol:
+                type: string
+                example: "AAPL"
+              predictions:
+                type: integer
+                example: 10
+              accuracy:
+                type: number
+                format: float
+                example: 0.90
+
+    ProviderStats:
+      type: object
+      description: Statistics for a single provider
+      properties:
+        provider:
+          type: string
+          description: Provider name
+          example: "anthropic"
+        total_predictions:
+          type: integer
+          example: 210
+        correct:
+          type: integer
+          example: 157
+        accuracy:
+          type: number
+          format: float
+          example: 0.748
+        avg_confidence:
+          type: number
+          format: float
+          example: 0.72
+        total_discoveries:
+          type: integer
+          description: For discovery provider only
+          example: 42
+
+    DirectionStats:
+      type: object
+      description: Statistics for prediction direction
+      required:
+        - total
+        - correct
+        - accuracy
+      properties:
+        total:
+          type: integer
+          example: 118
+        correct:
+          type: integer
+          example: 92
+        accuracy:
+          type: number
+          format: float
+          example: 0.780
+
+    Health:
+      type: object
+      description: Service health status
+      required:
+        - status
+        - service
+        - version
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall service status
+          example: healthy
+        service:
+          type: string
+          description: Service name
+          example: foresight
+        version:
+          type: string
+          description: API version
+          example: 1.0.0
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2026-02-16T14:30:00Z"
+        components:
+          type: object
+          description: Component health status
+          properties:
+            database:
+              type: string
+              enum: [healthy, degraded, unhealthy]
+              example: healthy
+            worker:
+              type: string
+              enum: [healthy, degraded, unhealthy]
+              example: healthy
+            providers:
+              type: object
+              description: LLM provider status
+              additionalProperties:
+                type: string
+                enum: [healthy, unhealthy]
+
+    Error:
+      type: object
+      description: Error response
+      required:
+        - error
+        - message
+        - status
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: "not_found"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Cycle not found"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 404
+        details:
+          type: object
+          description: Additional error details
+          nullable: true
+          example:
+            cycle_id: 999
+            reason: "No cycle exists with this ID"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2026-02-16T14:30:00Z"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "bad_request"
+            message: "Invalid query parameters"
+            status: 400
+            details:
+              page: "must be a positive integer"
+            timestamp: "2026-02-16T14:30:00Z"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "not_found"
+            message: "Resource not found"
+            status: 404
+            timestamp: "2026-02-16T14:30:00Z"
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per window
+          example: 100
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in current window
+          example: 0
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when limit resets
+          example: 1676556600
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until retry allowed
+          example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "rate_limit_exceeded"
+            message: "Rate limit exceeded. Try again in 60 seconds."
+            status: 429
+            details:
+              limit: 100
+              window: "1 minute"
+            timestamp: "2026-02-16T14:30:00Z"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "internal_error"
+            message: "An unexpected error occurred"
+            status: 500
+            timestamp: "2026-02-16T14:30:00Z"
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Optional API key for authenticated access
+
+security:
+  - {}  # Public endpoints by default
+  - ApiKeyAuth: []  # Optional API key authentication
+
+x-rate-limits:
+  default:
+    requests: 100
+    window: 60  # seconds
+  stream:
+    connections: 5
+    window: 60

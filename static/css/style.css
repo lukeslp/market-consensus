@@ -1,0 +1,210 @@
+:root {
+  /* ===== BASE COLORS ===== */
+  /* Dark theme foundation */
+  --bg-primary: #0f172a;       /* Slate 900 - main background */
+  --bg-secondary: #1e293b;     /* Slate 800 - elevated surfaces */
+  --bg-tertiary: #334155;      /* Slate 700 - highest elevation */
+
+  /* ===== STOCK STATE COLORS ===== */
+  /* Positive movement (green spectrum) */
+  --stock-up: #22c55e;         /* Green 500 - primary up indicator (WCAG AA: 3.8:1) */
+  --stock-up-bright: #4ade80;  /* Green 400 - strong positive */
+  --stock-up-muted: #16a34a;   /* Green 600 - subtle positive */
+  --stock-up-dark: #15803d;    /* Green 700 - background accents */
+
+  /* Negative movement (red spectrum) */
+  --stock-down: #ef4444;       /* Red 500 - primary down indicator (WCAG AA: 4.6:1) */
+  --stock-down-bright: #f87171; /* Red 400 - strong negative */
+  --stock-down-muted: #dc2626; /* Red 600 - subtle negative */
+  --stock-down-dark: #b91c1c;  /* Red 700 - background accents */
+
+  /* Neutral/Flat (gray spectrum) */
+  --stock-flat: #94a3b8;       /* Slate 400 - neutral/no change (WCAG AA: 5.9:1) */
+  --stock-flat-bright: #cbd5e1; /* Slate 300 - emphasized neutral */
+  --stock-flat-muted: #64748b; /* Slate 500 - de-emphasized neutral */
+
+  /* ===== CONFIDENCE LEVELS (via opacity) ===== */
+  /* Apply to stock state colors for LLM prediction confidence */
+  --confidence-high: 1.0;      /* 90-100% confidence */
+  --confidence-medium: 0.75;   /* 70-89% confidence */
+  --confidence-low: 0.50;      /* 50-69% confidence */
+  --confidence-uncertain: 0.30; /* <50% confidence */
+
+  /* ===== GLASSMORPHIC UI ===== */
+  /* Glass panel backgrounds */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg-hover: rgba(255, 255, 255, 0.08);
+  --glass-bg-active: rgba(255, 255, 255, 0.12);
+
+  /* Glass borders */
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-strong: rgba(255, 255, 255, 0.2);
+
+  /* Glass shadows */
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --glass-shadow-strong: 0 16px 48px rgba(0, 0, 0, 0.4);
+
+  /* ===== TEXT COLORS ===== */
+  /* High contrast for accessibility */
+  --text-primary: #f1f5f9;     /* Slate 100 - primary text (WCAG AAA: 14.6:1) */
+  --text-secondary: #cbd5e1;   /* Slate 300 - secondary text (WCAG AAA: 9.7:1) */
+  --text-muted: #94a3b8;       /* Slate 400 - muted text (WCAG AA: 5.9:1) */
+  --text-disabled: #64748b;    /* Slate 500 - disabled text (WCAG AA: 4.1:1) */
+
+  /* ===== ACCENT COLORS ===== */
+  /* Brand and UI accents */
+  --accent-primary: #60a5fa;   /* Blue 400 - primary accent (WCAG AA: 5.3:1) */
+  --accent-secondary: #a78bfa; /* Violet 400 - secondary accent (WCAG AA: 4.7:1) */
+  --accent-warning: #fbbf24;   /* Amber 400 - warnings (WCAG AA: 8.4:1) */
+  --accent-info: #38bdf8;      /* Sky 400 - informational (WCAG AA: 6.2:1) */
+
+  /* ===== DATA VISUALIZATION ===== */
+  /* D3.js colorblind-safe categorical palette (8 colors) */
+  --viz-cat-1: #332288;        /* Dark blue */
+  --viz-cat-2: #117733;        /* Green */
+  --viz-cat-3: #44AA99;        /* Teal */
+  --viz-cat-4: #88CCEE;        /* Light blue */
+  --viz-cat-5: #DDCC77;        /* Tan */
+  --viz-cat-6: #CC6677;        /* Rose */
+  --viz-cat-7: #AA4499;        /* Purple */
+  --viz-cat-8: #882255;        /* Wine */
+
+  /* Sequential scale for magnitude (single-hue) */
+  --viz-seq-1: #1e293b;        /* Darkest */
+  --viz-seq-2: #334155;
+  --viz-seq-3: #475569;
+  --viz-seq-4: #64748b;
+  --viz-seq-5: #94a3b8;        /* Lightest */
+
+  /* ===== SEMANTIC STATES ===== */
+  --state-success: var(--stock-up);
+  --state-error: var(--stock-down);
+  --state-warning: var(--accent-warning);
+  --state-info: var(--accent-info);
+
+  /* ===== INTERACTION STATES ===== */
+  --focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.3);
+  --focus-ring-error: 0 0 0 3px rgba(239, 68, 68, 0.3);
+
+  /* ===== LAYOUT ===== */
+  --border-radius-sm: 0.5rem;
+  --border-radius-md: 1rem;
+  --border-radius-lg: 1.5rem;
+
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 1.5rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 3rem;
+}
+
+/* ===== BASE STYLES ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: var(--spacing-lg);
+  line-height: 1.6;
+}
+
+/* ===== HEADER ===== */
+header {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+h1 {
+  font-size: 3rem;
+  color: var(--accent-primary);
+  margin-bottom: var(--spacing-xs);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+header p {
+  color: var(--text-secondary);
+  font-size: 1.125rem;
+}
+
+/* ===== GLASSMORPHIC PANELS ===== */
+#status {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+  background: var(--glass-bg);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--glass-shadow);
+}
+
+#status h2 {
+  color: var(--accent-warning);
+  margin-bottom: var(--spacing-sm);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+#status p {
+  line-height: 1.8;
+  margin-bottom: var(--spacing-xs);
+  color: var(--text-secondary);
+}
+
+/* ===== STOCK STATE CLASSES ===== */
+/* Apply to elements displaying stock predictions */
+.stock-up {
+  color: var(--stock-up);
+}
+
+.stock-down {
+  color: var(--stock-down);
+}
+
+.stock-flat {
+  color: var(--stock-flat);
+}
+
+/* With confidence levels */
+.confidence-high {
+  opacity: var(--confidence-high);
+}
+
+.confidence-medium {
+  opacity: var(--confidence-medium);
+}
+
+.confidence-low {
+  opacity: var(--confidence-low);
+}
+
+.confidence-uncertain {
+  opacity: var(--confidence-uncertain);
+}
+
+/* ===== ACCESSIBILITY HELPERS ===== */
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--border-radius-sm);
+}

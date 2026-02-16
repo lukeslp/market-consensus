@@ -1,0 +1,8 @@
+flask>=3.0
+yfinance>=0.2.36
+requests>=2.31
+gunicorn>=21.2
+python-dotenv>=1.0.0
+
+# Shared library (install in editable mode)
+# pip install -e /home/coolhand/shared[all]
