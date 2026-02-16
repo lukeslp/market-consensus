@@ -1,10 +1,29 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
 Foresight is a stock prediction dashboard that uses multiple language models to discover stocks, generate predictions, and track accuracy over time. It operates in continuous prediction cycles, evaluating model performance against actual market outcomes.
+
+## ⚠️ Critical Known Issues
+
+**DATABASE MODULE CONFLICT** - Routes will crash on first API call:
+- `app/routes/api.py` imports `get_db()` from `app/database.py` (returns raw `sqlite3.Connection`)
+- Routes call methods like `db.get_current_cycle()` which don't exist on raw connections
+- **Impact**: All API endpoints except `/health` will raise `AttributeError`
+- **Fix Required**: See "Database Integration Path" section below
+
+**TWO COMPETING SCHEMAS**:
+- `app/database.py`: Minimal schema (cycles/stocks/predictions/results), status='running/stopped'
+- `db.py`: Full schema (cycles/stocks/prices/predictions/accuracy_stats/events), status='active/completed/failed'
+- Docs and tests expect `db.py` schema
+
+**Missing Integration**:
+- PredictionService exists but is never called
+- No background worker for prediction cycles
+- SSE endpoint only emits heartbeat (no event queue)
+- Frontend is placeholder only ("In Development" status)
 
 ## Commands
 
