@@ -16,8 +16,6 @@ warnings.warn(
 from run import app
 
 if __name__ == '__main__':
-    print("WARNING: Running via app.py is deprecated. Use run.py instead.")
-    print("Starting application...")
     app.run(
         host=app.config['HOST'],
         port=app.config['PORT'],

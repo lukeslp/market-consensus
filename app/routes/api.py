@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, Response, current_app, request
 from app.database import get_db
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 api_bp = Blueprint('api', __name__)
 

@@ -36,11 +36,11 @@ class Config:
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
     # SSE streaming
-    SSE_RETRY = 3000  # milliseconds
+    SSE_RETRY = int(os.environ.get('SSE_RETRY', 3000))  # milliseconds
 
     # Stock data
-    MAX_STOCKS = 10  # Max stocks to track per cycle
-    LOOKBACK_DAYS = 30  # Historical data to fetch
+    MAX_STOCKS = int(os.environ.get('MAX_STOCKS', 10))  # Max stocks to track per cycle
+    LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', 30))  # Historical data to fetch
 
 
 class DevelopmentConfig(Config):
