@@ -119,11 +119,13 @@ def stock_detail(symbol):
 @api_bp.route('/stream')
 def stream():
     """SSE endpoint for real-time prediction updates"""
+    # Import ForesightDB to create instance directly (avoid Flask g context in generator)
+    from db import ForesightDB
 
     def generate():
         """Generate SSE events from database event queue"""
-        db = get_db()
-        last_event_id = 0
+        # Create direct database instance (not using Flask g)
+        db = ForesightDB(current_app.config['DB_PATH'])
 
         # Set SSE retry interval
         yield f"retry: {current_app.config['SSE_RETRY']}\n\n"
@@ -139,26 +141,28 @@ def stream():
             current_time = time.time()
 
             try:
-                # Get pending events from database
-                events = db.get_pending_events(since_id=last_event_id, limit=10)
+                # Get unprocessed events from database
+                events = db.get_unprocessed_events(limit=10)
 
-                for event in events:
-                    # Update last seen event ID
-                    if event['id'] > last_event_id:
-                        last_event_id = event['id']
+                if events:
+                    # Collect event IDs to mark as processed
+                    event_ids = []
 
-                    # Mark event as processed
-                    db.mark_event_processed(event['id'])
+                    for event in events:
+                        event_ids.append(event['id'])
 
-                    # Format and yield the event
-                    event_data = {
-                        'id': event['id'],
-                        'type': event['event_type'],
-                        'data': json.loads(event['data']) if event['data'] else {},
-                        'timestamp': event['created_at']
-                    }
+                        # Format and yield the event
+                        event_data = {
+                            'id': event['id'],
+                            'type': event['event_type'],
+                            'data': json.loads(event['data']) if event['data'] else {},
+                            'timestamp': event['timestamp']
+                        }
 
-                    yield f"data: {json.dumps(event_data)}\n\n"
+                        yield f"data: {json.dumps(event_data)}\n\n"
+
+                    # Mark all events as processed
+                    db.mark_events_processed(event_ids)
 
                 # Send heartbeat if needed
                 if current_time - last_heartbeat >= heartbeat_interval:

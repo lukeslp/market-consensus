@@ -17,6 +17,7 @@ if '/home/coolhand/shared' not in sys.path:
 
 import time
 import json
+from datetime import datetime, timedelta
 from db import ForesightDB
 
 
@@ -48,27 +49,23 @@ def test_database():
     print(f"✓ Recorded price")
 
     # Test prediction
+    from datetime import timedelta
+    target_time = datetime.now() + timedelta(days=7)
     prediction_id = db.add_prediction(
         cycle_id=cycle_id,
         stock_id=stock_id,
         provider='anthropic',
-        predicted_direction='bullish',
+        predicted_direction='up',
         confidence=0.75,
         reasoning='Test prediction',
-        initial_price=175.50
+        initial_price=175.50,
+        target_time=target_time
     )
     print(f"✓ Added prediction: {prediction_id}")
 
-    # Test event emission
-    db.emit_event(
-        event_type='test_event',
-        data={'message': 'Test event data'}
-    )
-    print(f"✓ Emitted event")
-
-    # Test event retrieval
-    events = db.get_pending_events(since_id=0, limit=10)
-    print(f"✓ Retrieved {len(events)} events")
+    # Test event retrieval (events are auto-emitted by database operations)
+    events = db.get_unprocessed_events(limit=10)
+    print(f"✓ Retrieved {len(events)} unprocessed events")
 
     # Test cycle completion
     db.complete_cycle(cycle_id)

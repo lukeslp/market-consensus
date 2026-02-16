@@ -815,6 +815,138 @@ class ForesightDB:
             """).fetchall()
             return [dict(row) for row in rows]
 
+    def emit_event(self, event_type: str, data: Dict[str, Any]) -> int:
+        """
+        Emit an event to the events table for SSE streaming
+
+        Args:
+            event_type: Type of event (e.g., 'prediction', 'cycle_start')
+            data: Event data dictionary
+
+        Returns:
+            Event ID
+        """
+        with self.get_connection() as conn:
+            self._emit_event(conn, event_type, data)
+            return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    def get_pending_events(self, since_id: int = 0, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get pending events since a given ID for SSE streaming
+
+        Args:
+            since_id: Get events with ID greater than this
+            limit: Maximum number of events to return
+
+        Returns:
+            List of event dictionaries
+        """
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM events
+                WHERE id > ? AND processed = 0
+                ORDER BY id ASC
+                LIMIT ?
+            """, (since_id, limit)).fetchall()
+
+            results = []
+            for row in rows:
+                result = dict(row)
+                # Parse JSON data
+                if result['data']:
+                    result['data'] = json.loads(result['data'])
+                results.append(result)
+            return results
+
+    def mark_event_processed(self, event_id: int) -> bool:
+        """
+        Mark a single event as processed
+
+        Args:
+            event_id: ID of event to mark
+
+        Returns:
+            True if successful
+        """
+        return self.mark_events_processed([event_id])
+
+    def fail_cycle(self, cycle_id: int, error: str) -> bool:
+        """
+        Mark a cycle as failed
+
+        Args:
+            cycle_id: ID of cycle to mark failed
+            error: Error message
+
+        Returns:
+            True if successful
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                UPDATE cycles
+                SET status = 'failed',
+                    end_time = ?
+                WHERE id = ?
+            """, (datetime.now(), cycle_id))
+            return cursor.rowcount > 0
+
+    def mark_cycle_failed(self, cycle_id: int, reason: str) -> bool:
+        """
+        Mark a cycle as failed (alias for fail_cycle for backward compatibility)
+
+        Args:
+            cycle_id: ID of cycle to mark failed
+            reason: Reason for failure
+
+        Returns:
+            True if successful
+        """
+        return self.fail_cycle(cycle_id, reason)
+
+    def record_price(self, stock_id: int, cycle_id: int, price: float, **kwargs) -> int:
+        """
+        Record a price snapshot (alias for add_price)
+
+        Args:
+            stock_id: Stock ID
+            cycle_id: Cycle ID
+            price: Stock price
+            **kwargs: Additional fields (volume, change_percent, source)
+
+        Returns:
+            Price record ID
+        """
+        return self.add_price(
+            stock_id=stock_id,
+            cycle_id=cycle_id,
+            price=price,
+            volume=kwargs.get('volume'),
+            change_percent=kwargs.get('change_percent'),
+            source=kwargs.get('source', 'yfinance')
+        )
+
+    def add_price_snapshot(self, stock_id: int, cycle_id: int, price: float, volume: int = None, change_percent: float = None) -> int:
+        """
+        Add a price snapshot (alias for add_price)
+
+        Args:
+            stock_id: Stock ID
+            cycle_id: Cycle ID
+            price: Stock price
+            volume: Trading volume
+            change_percent: Percent change
+
+        Returns:
+            Price record ID
+        """
+        return self.add_price(
+            stock_id=stock_id,
+            cycle_id=cycle_id,
+            price=price,
+            volume=volume,
+            change_percent=change_percent
+        )
+
 
 # Singleton instance
 _db_instance = None

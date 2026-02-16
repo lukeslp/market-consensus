@@ -1,0 +1,242 @@
+/* ===== ANIMATIONS ===== */
+/* GPU-accelerated animations for 60fps performance */
+
+/* ===== TILE PULSE (New Predictions) ===== */
+@keyframes tile-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(96, 165, 250, 0);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(96, 165, 250, 0.4);
+  }
+}
+
+.tile-new-prediction {
+  animation: tile-pulse 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== COLOR TRANSITIONS (Price Changes) ===== */
+.tile-price-up {
+  animation: price-flash-up 0.8s ease-out;
+}
+
+.tile-price-down {
+  animation: price-flash-down 0.8s ease-out;
+}
+
+@keyframes price-flash-up {
+  0% {
+    background-color: rgba(34, 197, 94, 0);
+  }
+  50% {
+    background-color: rgba(34, 197, 94, 0.2);
+  }
+  100% {
+    background-color: rgba(34, 197, 94, 0);
+  }
+}
+
+@keyframes price-flash-down {
+  0% {
+    background-color: rgba(239, 68, 68, 0);
+  }
+  50% {
+    background-color: rgba(239, 68, 68, 0.2);
+  }
+  100% {
+    background-color: rgba(239, 68, 68, 0);
+  }
+}
+
+/* ===== DETAIL PANEL SLIDE-IN ===== */
+.detail-panel {
+  /* Transform handled in layout.css, animation properties here */
+  will-change: transform;
+}
+
+.detail-panel-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 999;
+}
+
+.detail-panel-backdrop.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ===== FADE TRANSITIONS ===== */
+.fade-in {
+  animation: fade-in 0.4s ease-out;
+}
+
+.fade-out {
+  animation: fade-out 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ===== SLIDE TRANSITIONS ===== */
+.slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ===== CONNECTION STATUS PULSE ===== */
+.status-indicator.connecting {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ===== SHIMMER EFFECT (Loading) ===== */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* ===== ROTATION ANIMATION (Loading Icons) ===== */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+/* ===== BOUNCE ANIMATION (Alerts) ===== */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.bounce {
+  animation: bounce 0.6s ease-in-out;
+}
+
+/* ===== ACCURACY BAR FILL ===== */
+.accuracy-bar-fill {
+  animation: accuracy-fill 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes accuracy-fill {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  to {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+/* ===== REDUCED MOTION SUPPORT ===== */
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .tile-new-prediction,
+  .tile-price-up,
+  .tile-price-down {
+    animation: none;
+  }
+
+  .detail-panel {
+    transition: none;
+  }
+
+  .status-indicator.connecting {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* ===== GPU ACCELERATION HINTS ===== */
+/* Force GPU acceleration for smooth 60fps */
+.tile,
+.detail-panel,
+.glass-panel,
+.btn-primary,
+.btn-secondary {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Remove will-change after animations complete to save memory */
+.tile:not(.animating),
+.glass-panel:not(.animating) {
+  will-change: auto;
+}

@@ -91,12 +91,7 @@ class PredictionWorker:
             cycle_id = db.create_cycle()
             self.current_cycle_id = cycle_id
             logger.info(f'Started prediction cycle {cycle_id}')
-
-            # Emit cycle start event
-            db.emit_event(
-                event_type='cycle_start',
-                data={'cycle_id': cycle_id, 'timestamp': datetime.now().isoformat()}
-            )
+            # Note: cycle_start event is auto-emitted by db.create_cycle()
 
             # Phase 1: Discover stocks
             logger.info('Phase 1: Discovering stocks')
@@ -115,29 +110,13 @@ class PredictionWorker:
             # Phase 3: Complete cycle
             db.complete_cycle(cycle_id)
             logger.info(f'Completed prediction cycle {cycle_id}')
-
-            # Emit cycle complete event
-            db.emit_event(
-                event_type='cycle_complete',
-                data={
-                    'cycle_id': cycle_id,
-                    'stocks_discovered': len(symbols),
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
+            # Note: cycle_complete event is auto-emitted by db.complete_cycle()
 
         except Exception as e:
             logger.error(f'Error in prediction cycle: {e}', exc_info=True)
             if self.current_cycle_id:
                 db.fail_cycle(self.current_cycle_id, str(e))
-                db.emit_event(
-                    event_type='cycle_error',
-                    data={
-                        'cycle_id': self.current_cycle_id,
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat()
-                    }
-                )
+                # Note: cycle_failed event is auto-emitted by db.fail_cycle()
 
         finally:
             self.current_cycle_id = None
@@ -198,17 +177,7 @@ class PredictionWorker:
                     )
 
                 valid_symbols.append(symbol)
-
-                # Emit stock discovery event
-                db.emit_event(
-                    event_type='stock_discovered',
-                    data={
-                        'cycle_id': cycle_id,
-                        'symbol': symbol,
-                        'name': stock_info.get('name', symbol),
-                        'price': current_price
-                    }
-                )
+                # Note: stock_added event is auto-emitted by db.add_stock()
 
             return valid_symbols
 
@@ -263,8 +232,8 @@ class PredictionWorker:
 
             # Map prediction direction to database format
             direction_map = {
-                'UP': 'bullish',
-                'DOWN': 'bearish',
+                'UP': 'up',
+                'DOWN': 'down',
                 'NEUTRAL': 'neutral'
             }
             predicted_direction = direction_map.get(
@@ -273,6 +242,10 @@ class PredictionWorker:
             )
 
             # Store prediction in database
+            # Target time is 7 days from now (can be configured later)
+            from datetime import timedelta
+            target_time = datetime.now() + timedelta(days=7)
+
             prediction_id = db.add_prediction(
                 cycle_id=cycle_id,
                 stock_id=stock_id,
@@ -280,23 +253,12 @@ class PredictionWorker:
                 predicted_direction=predicted_direction,
                 confidence=prediction['confidence'],
                 reasoning=prediction['reasoning'],
-                initial_price=current_price
+                initial_price=current_price,
+                target_time=target_time
             )
 
             logger.info(f'Generated prediction for {symbol}: {predicted_direction} (confidence: {prediction["confidence"]:.2f})')
-
-            # Emit prediction event
-            db.emit_event(
-                event_type='prediction',
-                data={
-                    'cycle_id': cycle_id,
-                    'symbol': symbol,
-                    'provider': prediction['provider'],
-                    'prediction': predicted_direction,
-                    'confidence': prediction['confidence'],
-                    'initial_price': current_price
-                }
-            )
+            # Note: prediction_added event is auto-emitted by db.add_prediction()
 
         except Exception as e:
             logger.error(f'Error processing stock {symbol}: {e}', exc_info=True)
