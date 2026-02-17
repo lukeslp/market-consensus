@@ -287,6 +287,22 @@ class PredictionWorker:
                     reasoning=mistral_report['reasoning']
                 )
 
+            # 4. Perplexity (Search-Augmented Perspective)
+            logger.info(f'[{symbol}] Requesting analysis from Search-Augmented Analyst (Perplexity)')
+            perplexity_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='perplexity')
+            if perplexity_report:
+                analyst_reports.append(perplexity_report)
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=perplexity_report['provider'],
+                    predicted_direction=perplexity_report['prediction'],
+                    confidence=perplexity_report['confidence'],
+                    initial_price=current_price,
+                    target_time=target_time,
+                    reasoning=perplexity_report['reasoning']
+                )
+
             # --- CONSENSUS PHASE (Head of Research / Gemini) ---
             if analyst_reports:
                 logger.info(f'[{symbol}] Moderating debate between {len(analyst_reports)} analysts')
