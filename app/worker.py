@@ -238,16 +238,95 @@ class PredictionWorker:
 
             # --- MULTI-AGENT DEBATE PHASE ---
             analyst_reports = []
+            current_price = stock_data.get('current_price')
+            # Set target time to 7 days from now
+            from datetime import timedelta
+            target_time = datetime.now() + timedelta(days=7)
             
-            # 1. Primary technical analysis (usually Claude)
-            logger.info(f'[{symbol}] Requesting technical analysis from primary analyst')
-            primary_pred = self.prediction_service.generate_prediction(symbol, stock_data)
-            if primary_pred:
-                analyst_reports.append(primary_pred)
-            
-            # 2. Add second analyst for debate (using xAI/Grok)
-            # Temporarily reuse PredictionService with a different provider role if needed
-            # but for now we'll just use the primary and a secondary if available
+            # 1. Claude (Primary Analyst)
+            logger.info(f'[{symbol}] Requesting analysis from Primary Analyst (Claude)')
+            primary_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='anthropic')
+            if primary_report:
+                analyst_reports.append(primary_report)
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=primary_report['provider'],
+                    predicted_direction=primary_report['prediction'],
+                    confidence=primary_report['confidence'],
+                    initial_price=current_price,
+                    target_time=target_time,
+                    reasoning=primary_report['reasoning']
+                )
+
+            # 2. Grok (Alternative Analyst)
+            logger.info(f'[{symbol}] Requesting analysis from Alternative Analyst (Grok)')
+            alternative_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='xai')
+            if alternative_report:
+                analyst_reports.append(alternative_report)
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=alternative_report['provider'],
+                    predicted_direction=alternative_report['prediction'],
+                    confidence=alternative_report['confidence'],
+                    initial_price=current_price,
+                    target_time=target_time,
+                    reasoning=alternative_report['reasoning']
+                )
+
+            # 3. Mistral (European Perspective)
+            logger.info(f'[{symbol}] Requesting analysis from European Perspective (Mistral)')
+            mistral_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='mistral')
+            if mistral_report:
+                analyst_reports.append(mistral_report)
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=mistral_report['provider'],
+                    predicted_direction=mistral_report['prediction'],
+                    confidence=mistral_report['confidence'],
+                    initial_price=current_price,
+                    target_time=target_time,
+                    reasoning=mistral_report['reasoning']
+                )
+
+            # 4. Perplexity (Search-Augmented Perspective)
+            logger.info(f'[{symbol}] Requesting analysis from Search-Augmented Analyst (Perplexity)')
+            perplexity_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='perplexity')
+            if perplexity_report:
+                analyst_reports.append(perplexity_report)
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=perplexity_report['provider'],
+                    predicted_direction=perplexity_report['prediction'],
+                    confidence=perplexity_report['confidence'],
+                    initial_price=current_price,
+                    target_time=target_time,
+                    reasoning=perplexity_report['reasoning']
+                )
+
+            # --- CONSENSUS PHASE (Head of Research / Gemini) ---
+            if analyst_reports:
+                logger.info(f'[{symbol}] Moderating debate between {len(analyst_reports)} analysts')
+                consensus = self.prediction_service.debate_and_vote(symbol, stock_data, analyst_reports)
+                
+                if consensus:
+                    # Mark this as the final consensus prediction
+                    db.add_prediction(
+                        cycle_id=cycle_id,
+                        stock_id=stock_id,
+                        provider=f"{consensus['provider']}-consensus",
+                        predicted_direction=consensus['prediction'],
+                        confidence=consensus['confidence'],
+                        initial_price=current_price,
+                        target_time=target_time,
+                        reasoning=consensus['reasoning']
+                    )
+                    logger.info(f'Consensus reached for {symbol}: {consensus["prediction"]} (confidence: {consensus["confidence"]})')
+            else:
+                logger.warning(f'No analyst reports available for {symbol}, skipping consensus')
             logger.info(f'[{symbol}] Requesting alternative analysis from secondary analyst')
             
             # Let's use xAI explicitly as the "contrarian" for the debate

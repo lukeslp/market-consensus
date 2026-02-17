@@ -187,17 +187,44 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
             logger.error(f'Error discovering stocks: {str(e)}')
             return []
 
-    def generate_prediction(self, symbol: str, stock_data: Dict) -> Optional[Dict]:
+    def generate_prediction(self, symbol: str, stock_data: Dict, provider_name: Optional[str] = None) -> Optional[Dict]:
         """
-        Generate prediction for a stock
+        Generate prediction for a stock using a specific provider or the default 'prediction' role.
+        
+        Args:
+            symbol: Stock symbol
+            stock_data: Technical data
+            provider_name: Specific provider name (e.g., 'anthropic', 'xai', 'mistral', 'perplexity')
+                           If None, uses the default 'prediction' role from config.
         """
-        if 'prediction' not in self.providers:
-            logger.error('Prediction provider not configured')
-            return None
+        role = 'prediction'
+        if provider_name:
+            # Check if we have this provider initialized for any role, or get it from factory
+            # For simplicity, we'll try to get it from our initialized providers first
+            target_provider = None
+            for r, p in self.providers.items():
+                if self.config['PROVIDERS'].get(r) == provider_name:
+                    target_provider = p
+                    break
+            
+            if not target_provider:
+                try:
+                    target_provider = ProviderFactory.get_provider(provider_name)
+                    # Set model from overrides if available
+                    model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
+                    if model:
+                        target_provider.model = model
+                except Exception as e:
+                    logger.error(f'Failed to get provider {provider_name}: {e}')
+                    return None
+        else:
+            if 'prediction' not in self.providers:
+                logger.error('Prediction provider not configured')
+                return None
+            target_provider = self.providers['prediction']
+            provider_name = self.config['PROVIDERS']['prediction']
 
         try:
-            provider = self.providers['prediction']
-            provider_name = self.config['PROVIDERS']['prediction']
             model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
 
             prompt = f"""Analyze this stock and make a short-term prediction (1-7 days):
@@ -219,7 +246,7 @@ Return your response as JSON:
 }}"""
 
             from llm_providers import Message
-            response = provider.complete(
+            response = target_provider.complete(
                 messages=[Message(role='user', content=prompt)],
                 model=model
             )
@@ -235,14 +262,14 @@ Return your response as JSON:
 
             return {
                 'provider': provider_name,
-                'model': model or getattr(provider, 'model', 'unknown'),
+                'model': model or getattr(target_provider, 'model', 'unknown'),
                 'prediction': prediction.get('prediction', 'NEUTRAL'),
                 'confidence': prediction.get('confidence', 0.5),
                 'reasoning': prediction.get('reasoning', 'No reasoning provided')
             }
 
         except Exception as e:
-            logger.error(f'Error generating prediction for {symbol}: {str(e)}')
+            logger.error(f'Error generating prediction for {symbol} using {provider_name}: {str(e)}')
             return None
 
     def synthesize_confidence(self, predictions: list) -> Optional[float]:
