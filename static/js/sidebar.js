@@ -157,7 +157,7 @@ class Sidebar {
 
   updateLeaderboard(providers) {
     // Sort by accuracy descending
-    providers.sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0));
+    providers.sort((a, b) => (b.accuracy_rate || 0) - (a.accuracy_rate || 0));
 
     const rowHeight = 80;
     const headerHeight = 60;
@@ -198,6 +198,8 @@ class Sidebar {
     const rowEnter = rows.enter()
       .append('g')
       .attr('class', 'provider-row')
+      .attr('role', 'listitem')
+      .attr('tabindex', 0)
       .attr('transform', (d, i) => `translate(0, ${headerHeight + i * rowHeight})`)
       .style('opacity', 0);
 
@@ -319,11 +321,11 @@ class Sidebar {
       .duration(1000)
       .ease(d3.easeCubicOut)
       .attr('width', d => {
-        const accuracy = d.accuracy || 0;
+        const accuracy = d.accuracy_rate || 0;
         return 80 * accuracy;
       })
       .attr('fill', d => {
-        const accuracy = d.accuracy || 0;
+        const accuracy = d.accuracy_rate || 0;
         if (accuracy >= 0.7) return this.colors.up;
         if (accuracy >= 0.5) return '#fbbf24';
         return this.colors.down;
@@ -334,13 +336,13 @@ class Sidebar {
       .transition()
       .duration(1000)
       .tween('text', function(d) {
-        const i = d3.interpolateNumber(0, (d.accuracy || 0) * 100);
+        const i = d3.interpolateNumber(0, (d.accuracy_rate || 0) * 100);
         return function(t) {
           d3.select(this).text(`${i(t).toFixed(0)}%`);
         };
       })
       .attr('fill', d => {
-        const accuracy = d.accuracy || 0;
+        const accuracy = d.accuracy_rate || 0;
         if (accuracy >= 0.7) return this.colors.up;
         if (accuracy >= 0.5) return '#fbbf24';
         return this.colors.down;
@@ -350,23 +352,32 @@ class Sidebar {
     rowMerge.select('.prediction-count')
       .text(d => `${d.total_predictions || 0} predictions`);
 
-    // Hover effects (arrow functions so `this` stays the Sidebar instance)
+    // Accessible label — updated on each render pass so it reflects current rank/accuracy
     rowMerge
-      .on('mouseenter', (event) => {
-        d3.select(event.currentTarget).select('.row-bg')
-          .transition()
-          .duration(200)
-          .attr('stroke', this.colors.accentPrimary)
-          .attr('stroke-width', 2);
-      })
-      .on('mouseleave', (event) => {
-        d3.select(event.currentTarget).select('.row-bg')
-          .transition()
-          .duration(200)
-          .attr('stroke', this.colors.glassBorder)
-          .attr('stroke-width', 1);
-      })
-      .style('cursor', 'pointer');
+      .attr('aria-label', (d, i) => {
+        const rank = i + 1;
+        const name = this.formatProviderName(d.provider);
+        const preds = d.total_predictions || 0;
+        const acc = d.accuracy_rate ? `${(d.accuracy_rate * 100).toFixed(0)}% accuracy` : 'no accuracy data';
+        return `Rank ${rank}: ${name}, ${preds} predictions, ${acc}`;
+      });
+
+    // Highlight helper shared by hover and focus handlers
+    const highlightRow = (el, active) => {
+      d3.select(el).select('.row-bg')
+        .transition()
+        .duration(200)
+        .attr('stroke', active ? this.colors.accentPrimary : this.colors.glassBorder)
+        .attr('stroke-width', active ? 2 : 1);
+    };
+
+    // Hover and focus effects (arrow functions so `this` stays the Sidebar instance)
+    rowMerge
+      .on('mouseenter', (event) => highlightRow(event.currentTarget, true))
+      .on('mouseleave', (event) => highlightRow(event.currentTarget, false))
+      .on('focusin',    (event) => highlightRow(event.currentTarget, true))
+      .on('focusout',   (event) => highlightRow(event.currentTarget, false))
+      .style('cursor', 'default');
 
     // Exit
     rows.exit()

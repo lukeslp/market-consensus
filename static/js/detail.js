@@ -41,6 +41,8 @@ class StockDetail {
       .attr('preserveAspectRatio', 'xMidYMid meet')
       .attr('role', 'img')
       .attr('aria-label', 'Stock prediction timeline chart')
+      .attr('tabindex', 0)
+      .attr('aria-describedby', 'detail-chart-tooltip')
       .classed('stock-detail', true);
 
     // Chart group
@@ -71,10 +73,12 @@ class StockDetail {
     this.chart.append('g').attr('class', 'axis axis-x');
     this.chart.append('g').attr('class', 'axis axis-y');
 
-    // Tooltip
+    // Tooltip — role="tooltip" with stable id for aria-describedby linkage
     this.tooltip = this.container
       .append('div')
       .attr('class', 'detail-tooltip')
+      .attr('id', 'detail-chart-tooltip')
+      .attr('role', 'tooltip')
       .style('position', 'absolute')
       .style('opacity', 0)
       .style('background', 'rgba(15, 23, 42, 0.95)')
@@ -358,7 +362,7 @@ class StockDetail {
     this.chart.selectAll('.overlay').remove();
 
     // Invisible overlay for mouse tracking
-    const overlay = this.chart.append('rect')
+    this.chart.append('rect')
       .attr('class', 'overlay')
       .attr('width', chartWidth)
       .attr('height', chartHeight)
@@ -385,6 +389,46 @@ class StockDetail {
       .attr('stroke', '#fff')
       .attr('stroke-width', 2)
       .attr('opacity', 0);
+
+    // Keyboard navigation through data points — ArrowLeft/ArrowRight step through history
+    // This provides a keyboard-accessible equivalent to the mouse tooltip (MED-04)
+    this._keyboardIndex = null;
+    const svgNode = this.svg.node();
+
+    svgNode.addEventListener('keydown', (event) => {
+      if (!history || history.length === 0) return;
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+
+      if (this._keyboardIndex === null) {
+        this._keyboardIndex = event.key === 'ArrowRight' ? 0 : history.length - 1;
+      } else if (event.key === 'ArrowRight') {
+        this._keyboardIndex = Math.min(this._keyboardIndex + 1, history.length - 1);
+      } else {
+        this._keyboardIndex = Math.max(this._keyboardIndex - 1, 0);
+      }
+
+      const d = history[this._keyboardIndex];
+      const x = this.scales.x(d.date);
+      const y = this.scales.y(d.price);
+
+      this.chart.select('.focus-line')
+        .attr('x1', x).attr('x2', x).attr('opacity', 0.5);
+      this.chart.select('.focus-circle')
+        .attr('cx', x).attr('cy', y).attr('opacity', 1);
+
+      // Position tooltip near the focus circle within the SVG bounding box
+      const svgRect = svgNode.getBoundingClientRect();
+      const { margin } = this.options;
+      const absX = svgRect.left + margin.left + x;
+      const absY = svgRect.top  + margin.top  + y;
+      this.showPriceTooltip({ pageX: absX, pageY: absY }, d);
+    });
+
+    svgNode.addEventListener('blur', () => {
+      this._keyboardIndex = null;
+      this.hideTooltip();
+    });
   }
 
   handleMouseMove(event, history) {

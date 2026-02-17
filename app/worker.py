@@ -62,6 +62,16 @@ class PredictionWorker:
             self.thread.join(timeout=5)
         logger.info('Prediction worker stopped')
 
+    def get_status(self) -> dict:
+        """Return current worker state for the /api/worker/status endpoint."""
+        return {
+            'running': self.running,
+            'alive': self.thread.is_alive() if self.thread else False,
+            'current_cycle_id': self.current_cycle_id,
+            'last_cycle_time': self.last_cycle_time,
+            'total_cycles_completed': self.total_cycles_completed,
+        }
+
     def _run_worker(self):
         """Main worker loop"""
         cycle_interval = self.config['CYCLE_INTERVAL']

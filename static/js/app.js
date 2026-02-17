@@ -377,8 +377,6 @@ class ForesightDashboard {
     }
 
     // Update ticker tape with latest prediction
-    const symbol = data.ticker || data.stock?.symbol || data.stock?.ticker || '';
-    const direction = data.predicted_direction || data.prediction || '';
     if (symbol) {
       const dirLabel = direction === 'up' ? '▲' : direction === 'down' ? '▼' : '—';
       this.addTickerItem(`${symbol} ${dirLabel}`);

@@ -64,6 +64,7 @@ class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
     TESTING = False
+    CYCLE_INTERVAL = int(os.environ.get('CYCLE_INTERVAL', 600))  # 10 minutes in production
 
 
 config = {
