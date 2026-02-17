@@ -448,10 +448,10 @@ class StockDetail {
   }
 
   getConfidenceOpacity(confidence) {
-    if (confidence >= 0.9) return 1.0;
-    if (confidence >= 0.7) return 0.75;
-    if (confidence >= 0.5) return 0.5;
-    return 0.3;
+    if (confidence >= 0.9) return 1.0;    // 90-100% - fully opaque
+    if (confidence >= 0.7) return 0.75;   // 70-89% - strong
+    if (confidence >= 0.5) return 0.6;    // 50-69% - moderate (improved visibility)
+    return 0.4;                           // <50% - uncertain (improved visibility)
   }
 
   showEmpty() {

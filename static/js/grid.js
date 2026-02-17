@@ -188,20 +188,21 @@ class StockGrid {
                this.colors.flat;
       });
 
-    // Update prediction arrow
+    // Update prediction arrow (redundant encoding for colorblind users)
     merged
       .select('.prediction-arrow')
       .transition()
       .duration(500)
       .attr('d', d => {
-        if (!d.prediction || d.prediction === 'flat') return '';
+        if (!d.prediction || d.prediction === 'flat') return 'M -3,0 A 3,3 0 1,0 3,0 A 3,3 0 1,0 -3,0'; // Circle
         if (d.prediction === 'up') {
-          return 'M 0,-3 L -3,1 L 3,1 Z'; // Up arrow
+          return 'M 0,-4 L -3,1 L 3,1 Z'; // Up triangle
         } else {
-          return 'M 0,3 L -3,-1 L 3,-1 Z'; // Down arrow
+          return 'M 0,4 L -3,-1 L 3,-1 Z'; // Down triangle
         }
       })
-      .attr('fill', '#1e293b');
+      .attr('fill', '#fff')  // White for contrast
+      .attr('stroke', 'none');
 
     // Update accuracy bar
     merged
@@ -220,8 +221,18 @@ class StockGrid {
         return this.colors.down;
       });
 
-    // Hover interactions
+    // Accessibility: Make tiles keyboard navigable
     merged
+      .attr('tabindex', 0)
+      .attr('role', 'button')
+      .attr('aria-label', d => {
+        const direction = d.prediction === 'up' ? 'upward' :
+                         d.prediction === 'down' ? 'downward' : 'neutral';
+        const conf = d.confidence ? `${(d.confidence * 100).toFixed(0)}% confidence` : 'unknown confidence';
+        const price = d.price ? `$${d.price.toFixed(2)}` : 'price unavailable';
+        return `${d.symbol} ${d.name || 'stock'}, ${price}, predicted ${direction}, ${conf}`;
+      })
+      // Mouse interactions
       .on('mouseenter', function(event, d) {
         d3.select(this)
           .select('.tile-bg')
@@ -243,7 +254,30 @@ class StockGrid {
           this.options.onTileClick(d);
         }
       })
-      .style('cursor', 'pointer');
+      // Keyboard interactions
+      .on('keydown', (event, d) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          if (this.options.onTileClick) {
+            this.options.onTileClick(d);
+          }
+        }
+      })
+      // Focus indicators
+      .on('focus', function() {
+        d3.select(this)
+          .select('.tile-bg')
+          .attr('stroke', '#60a5fa')
+          .attr('stroke-width', 3);
+      })
+      .on('blur', function() {
+        d3.select(this)
+          .select('.tile-bg')
+          .attr('stroke', '#334155')
+          .attr('stroke-width', 1);
+      })
+      .style('cursor', 'pointer')
+      .style('outline', 'none'); // We handle focus visually with stroke
 
     // EXIT: removed tiles
     tiles
