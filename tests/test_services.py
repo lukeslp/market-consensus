@@ -110,7 +110,7 @@ class TestPredictionService:
         prediction = service.generate_prediction('AAPL', stock_data)
 
         assert prediction is not None
-        assert prediction['prediction'] == 'UP'
+        assert prediction['prediction'] == 'up'
         assert prediction['confidence'] == 0.75
         assert 'reasoning' in prediction
 
