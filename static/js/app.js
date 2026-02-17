@@ -89,10 +89,12 @@ class ForesightDashboard {
       });
     }
 
-    // Stock Detail
-    const detailContainer = d3.select('#stock-detail');
+    // Stock Detail — mount inside the body section, not the full aside
+    // (the aside contains a close button header that must remain interactive)
+    const detailContainer = d3.select('#detail-body');
     if (!detailContainer.empty()) {
-      this.detail = new StockDetail('#stock-detail', {
+      detailContainer.html(''); // clear loading skeleton placeholder
+      this.detail = new StockDetail('#detail-body', {
         width: 800,
         height: 400
       });
@@ -192,12 +194,12 @@ class ForesightDashboard {
   async selectStock(symbol) {
     this.selectedStock = symbol;
 
-    // Open panel immediately with a loading skeleton — don't wait for fetch
+    // Open panel immediately — don't wait for fetch
     const panel = document.getElementById('stock-detail');
     const backdrop = document.getElementById('detail-backdrop');
     if (panel) {
-      const body = document.getElementById('detail-body');
-      if (body) body.innerHTML = '<div class="loading-skeleton"></div>';
+      // Show empty/cleared state while loading (don't destroy the D3 SVG via innerHTML)
+      if (this.detail) this.detail.showEmpty();
       panel.setAttribute('aria-hidden', 'false');
       panel.focus();
     }
