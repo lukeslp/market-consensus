@@ -281,7 +281,7 @@ class ForesightDashboard {
 
     this.eventSource.onerror = (error) => {
       console.error('SSE connection error:', error);
-      this.updateConnectionStatus('disconnected');
+      this.updateConnectionStatus('reconnecting');
 
       // Attempt reconnection after delay
       setTimeout(() => {
@@ -422,11 +422,13 @@ class ForesightDashboard {
     const text = document.getElementById('status-text');
 
     if (dot) {
-      dot.classList.toggle('connected',    status === 'connected');
-      dot.classList.toggle('disconnected', status !== 'connected');
+      dot.className = 'status-indicator'; // reset all state classes
+      dot.classList.add(status); // 'connected' | 'disconnected' | 'reconnecting'
     }
     if (text) {
-      text.textContent = status === 'connected' ? 'Connected' : 'Disconnected';
+      text.textContent = status === 'connected' ? 'Connected'
+        : status === 'reconnecting' ? 'Reconnecting...'
+        : 'Disconnected';
     }
   }
 

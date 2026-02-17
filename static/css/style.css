@@ -217,6 +217,11 @@ body {
   animation: status-heartbeat 2.5s ease-in-out infinite;
 }
 
+.status-indicator.reconnecting {
+  background: var(--accent-primary);
+  animation: status-heartbeat 1s ease-in-out infinite;
+}
+
 .status-indicator.disconnected {
   background: var(--stock-down);
 }
