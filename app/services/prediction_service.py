@@ -30,14 +30,104 @@ class PredictionService:
 
     def _init_providers(self):
         """Initialize LLM providers from config"""
+        overrides = self.config.get('MODEL_OVERRIDES', {})
         for role, provider_name in self.config['PROVIDERS'].items():
             try:
+                # Use model override if specified for this provider
+                model = overrides.get(provider_name)
+                
+                # We need to use ProviderFactory to get the provider
                 provider = ProviderFactory.get_provider(provider_name)
+                
+                # Manually override the model if specified
+                if model:
+                    provider.model = model
+                    logger.info(f'Initialized {provider_name} for {role} using model {model}')
+                else:
+                    logger.info(f'Initialized {provider_name} for {role}')
+                
                 self.providers[role] = provider
-                logger.info(f'Initialized {provider_name} for {role}')
 
             except Exception as e:
                 logger.error(f'Failed to initialize {provider_name} for {role}: {str(e)}')
+
+    def debate_and_vote(self, symbol: str, stock_data: Dict, analyst_predictions: list) -> Optional[Dict]:
+        """
+        Have a lead agent synthesize multiple predictions into a final consensus
+
+        Args:
+            symbol: Stock symbol
+            stock_data: Technical data
+            analyst_predictions: List of individual analyses
+
+        Returns:
+            Consensus prediction dict
+        """
+        if 'synthesis' not in self.providers:
+            logger.error('Synthesis provider not configured')
+            return None
+
+        try:
+            provider = self.providers['synthesis']
+            provider_name = self.config['PROVIDERS']['synthesis']
+            model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
+            
+            # Format predictions for the prompt
+            debate_context = ""
+            for i, pred in enumerate(analyst_predictions):
+                debate_context += f"Analyst {i+1} ({pred['provider']}):\n"
+                debate_context += f"Direction: {pred['prediction']}\n"
+                debate_context += f"Confidence: {pred['confidence']}\n"
+                debate_context += f"Reasoning: {pred['reasoning']}\n\n"
+
+            prompt = f"""You are the Head of Research at a top-tier hedge fund. 
+Your analysts have provided conflicting technical reports on {symbol}.
+
+Symbol: {symbol}
+Current Price: ${stock_data.get('current_price', 'N/A')}
+
+Analyst Reports:
+{debate_context}
+
+Your task is to:
+1. Moderate the debate between these perspectives.
+2. Evaluate which reasoning is most grounded in the technical data.
+3. Provide a final 'Hedge Fund Consensus' vote.
+
+Return your final decision as JSON:
+{{
+    "consensus_direction": "UP|DOWN|NEUTRAL",
+    "consensus_confidence": 0.82,
+    "synthesis_reasoning": "A brief summary of the debate and why this conclusion was reached."
+}}"""
+
+            from llm_providers import Message
+            response = provider.complete(
+                messages=[Message(role='user', content=prompt)],
+                model=model
+            )
+
+            import json
+            import re
+            
+            # Clean response if it contains markdown code blocks
+            content = response.content.strip()
+            if content.startswith('```'):
+                content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
+            
+            result = json.loads(content)
+
+            return {
+                'provider': self.config['PROVIDERS']['synthesis'],
+                'model': getattr(provider, 'model', 'unknown'),
+                'prediction': result.get('consensus_direction', 'NEUTRAL'),
+                'confidence': result.get('consensus_confidence', 0.5),
+                'reasoning': result.get('synthesis_reasoning', 'No synthesis reasoning provided')
+            }
+
+        except Exception as e:
+            logger.error(f'Error in debate/vote for {symbol}: {str(e)}')
+            return None
 
     def discover_stocks(self, count: int = 10) -> list:
         """
@@ -97,13 +187,6 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
     def generate_prediction(self, symbol: str, stock_data: Dict) -> Optional[Dict]:
         """
         Generate prediction for a stock
-
-        Args:
-            symbol: Stock ticker symbol
-            stock_data: Historical stock data
-
-        Returns:
-            Dict with prediction details or None
         """
         if 'prediction' not in self.providers:
             logger.error('Prediction provider not configured')
@@ -111,6 +194,8 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
 
         try:
             provider = self.providers['prediction']
+            provider_name = self.config['PROVIDERS']['prediction']
+            model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
 
             prompt = f"""Analyze this stock and make a short-term prediction (1-7 days):
 
@@ -132,16 +217,22 @@ Return your response as JSON:
 
             from llm_providers import Message
             response = provider.complete(
-                messages=[Message(role='user', content=prompt)]
+                messages=[Message(role='user', content=prompt)],
+                model=model
             )
 
             # Parse JSON response (response is CompletionResponse object)
             import json
-            prediction = json.loads(response.content)
+            import re
+            content = response.content.strip()
+            if content.startswith('```'):
+                content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
+            
+            prediction = json.loads(content)
 
             return {
-                'provider': self.config['PROVIDERS']['prediction'],
-                'model': getattr(provider, 'model', 'unknown'),
+                'provider': provider_name,
+                'model': model or getattr(provider, 'model', 'unknown'),
                 'prediction': prediction.get('prediction', 'NEUTRAL'),
                 'confidence': prediction.get('confidence', 0.5),
                 'reasoning': prediction.get('reasoning', 'No reasoning provided')

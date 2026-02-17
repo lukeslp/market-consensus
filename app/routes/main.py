@@ -3,6 +3,7 @@ Main routes blueprint
 Serves the dashboard UI
 """
 from flask import Blueprint, send_from_directory, current_app
+from datetime import datetime
 
 main_bp = Blueprint('main', __name__)
 
@@ -32,7 +33,8 @@ def health():
             'status': 'healthy',
             'service': 'foresight',
             'database': 'connected',
-            'worker': worker_status
+            'worker': worker_status,
+            'timestamp': datetime.now().isoformat()
         }, 200
 
     except Exception as e:
@@ -40,5 +42,6 @@ def health():
         return {
             'status': 'unhealthy',
             'service': 'foresight',
-            'error': str(e)
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
         }, 503

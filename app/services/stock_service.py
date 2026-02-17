@@ -28,10 +28,15 @@ class StockService:
             stock = yf.Ticker(symbol)
             info = stock.info
 
+            if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info and 'longName' not in info):
+                return None
+
+            current_price = info.get('currentPrice', info.get('regularMarketPrice'))
             return {
                 'symbol': symbol.upper(),
                 'name': info.get('longName', symbol),
-                'current_price': info.get('currentPrice', info.get('regularMarketPrice')),
+                'current_price': current_price,
+                'price': current_price,  # Alias for compatibility
                 'market_cap': info.get('marketCap'),
                 'sector': info.get('sector'),
                 'industry': info.get('industry')

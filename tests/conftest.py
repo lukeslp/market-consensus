@@ -27,8 +27,8 @@ class TestConfig(Config):
     """Test configuration"""
     TESTING = True
     DEBUG = True
-    # Use in-memory database for tests
-    DB_PATH = ':memory:'
+    # Placeholder for database path, will be overridden in fixture
+    DB_PATH = 'test_foresight.db'
     # Disable SSE retry for faster tests
     SSE_RETRY = 100
 
@@ -36,8 +36,8 @@ class TestConfig(Config):
 @pytest.fixture(scope='session')
 def temp_db_file():
     """Create temporary database file for session"""
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
-        db_path = tmp.name
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
 
     yield db_path
 
@@ -54,8 +54,8 @@ def temp_db_file():
 def db(temp_db_file):
     """Provide fresh ForesightDB instance for each test"""
     database = ForesightDB(temp_db_file)
-    yield database
-    # Clean up between tests
+    
+    # Clean up BEFORE test
     with database.get_connection() as conn:
         cursor = conn.cursor()
         # Get all tables
@@ -65,12 +65,27 @@ def db(temp_db_file):
         for table in tables:
             if table != 'sqlite_sequence':
                 cursor.execute(f"DELETE FROM {table}")
+                
+    yield database
+    
+    # Clean up AFTER test
+    with database.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        for table in tables:
+            if table != 'sqlite_sequence':
+                cursor.execute(f"DELETE FROM {table}")
 
 
 @pytest.fixture
-def app():
+def app(temp_db_file):
     """Provide Flask application with test config"""
-    app = create_app(TestConfig)
+    # Use a fresh config class to avoid cross-test pollution
+    class AppTestConfig(TestConfig):
+        DB_PATH = temp_db_file
+
+    app = create_app(AppTestConfig)
     return app
 
 
@@ -92,7 +107,12 @@ def mock_provider():
     """Mock LLM provider for testing"""
     provider = Mock()
     provider.model = 'mock-model-1'
-    provider.generate = Mock(return_value='{"prediction": "UP", "confidence": 0.75, "reasoning": "Test reasoning"}')
+    
+    # Mock Response object
+    mock_response = Mock()
+    mock_response.content = '{"prediction": "UP", "confidence": 0.75, "reasoning": "Test reasoning"}'
+    
+    provider.complete = Mock(return_value=mock_response)
     return provider
 
 
@@ -125,6 +145,9 @@ def mock_yfinance(monkeypatch):
     import pandas as pd
     dates = pd.date_range(end=datetime.now(), periods=30, freq='D')
     mock_ticker.history.return_value = pd.DataFrame({
+        'Open': [148 + i for i in range(30)],
+        'High': [152 + i for i in range(30)],
+        'Low': [147 + i for i in range(30)],
         'Close': [150 + i for i in range(30)],
         'Volume': [1000000] * 30
     }, index=dates)

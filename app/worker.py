@@ -91,15 +91,22 @@ class PredictionWorker:
                 # Wait a bit before retrying
                 time.sleep(60)
 
-    def _run_prediction_cycle(self):
-        """Execute a complete prediction cycle"""
+    def _run_prediction_cycle(self, cycle_id: Optional[int] = None):
+        """
+        Execute a complete prediction cycle
+
+        Args:
+            cycle_id: Optional existing cycle ID to use
+        """
         db = ForesightDB(self.db_path)
 
         try:
-            # Create new cycle
-            cycle_id = db.create_cycle()
+            # Create new cycle if not provided
+            if cycle_id is None:
+                cycle_id = db.create_cycle()
+                
             self.current_cycle_id = cycle_id
-            logger.info(f'Started prediction cycle {cycle_id}')
+            logger.info(f'Started processing prediction cycle {cycle_id}')
             # Note: cycle_start event is auto-emitted by db.create_cycle()
 
             # Phase 1: Discover stocks
@@ -201,12 +208,7 @@ class PredictionWorker:
 
     def _process_stock(self, db: ForesightDB, cycle_id: int, symbol: str):
         """
-        Process a single stock: fetch data and generate predictions
-
-        Args:
-            db: Database instance
-            cycle_id: Current cycle ID
-            symbol: Stock ticker symbol
+        Process a single stock: fetch data, get multiple analyst reports, and a consensus
         """
         try:
             # Get stock from database
@@ -234,45 +236,93 @@ class PredictionWorker:
                 'dates': historical['dates']
             }
 
-            # Generate prediction
-            prediction = self.prediction_service.generate_prediction(symbol, stock_data)
+            # --- MULTI-AGENT DEBATE PHASE ---
+            analyst_reports = []
+            
+            # 1. Primary technical analysis (usually Claude)
+            logger.info(f'[{symbol}] Requesting technical analysis from primary analyst')
+            primary_pred = self.prediction_service.generate_prediction(symbol, stock_data)
+            if primary_pred:
+                analyst_reports.append(primary_pred)
+            
+            # 2. Add second analyst for debate (using xAI/Grok)
+            # Temporarily reuse PredictionService with a different provider role if needed
+            # but for now we'll just use the primary and a secondary if available
+            logger.info(f'[{symbol}] Requesting alternative analysis from secondary analyst')
+            
+            # Let's use xAI explicitly as the "contrarian" for the debate
+            try:
+                from llm_providers import ProviderFactory
+                xai_provider = ProviderFactory.get_provider('xai')
+                # Simple prompt for the second analyst
+                from llm_providers import Message
+                import json
+                prompt = f"Contrarian analysis for {symbol} at ${stock_data['current_price']}. Predict UP/DOWN/NEUTRAL with JSON: {{\"prediction\": \"UP\", \"confidence\": 0.7, \"reasoning\": \"...\"}}"
+                resp = xai_provider.complete(messages=[Message(role='user', content=prompt)])
+                # Basic parsing
+                try:
+                    alt_data = json.loads(resp.content)
+                    analyst_reports.append({
+                        'provider': 'xai',
+                        'prediction': alt_data.get('prediction', 'NEUTRAL'),
+                        'confidence': alt_data.get('confidence', 0.5),
+                        'reasoning': alt_data.get('reasoning', 'No reasoning')
+                    })
+                except:
+                    pass
+            except Exception as e:
+                logger.warning(f'Secondary analyst failed: {e}')
 
-            if not prediction:
-                logger.warning(f'Failed to generate prediction for {symbol}')
+            if not analyst_reports:
+                logger.warning(f'No analyst reports generated for {symbol}')
                 return
 
+            # 3. Head of Research (Gemini) Debate and Consensus
+            logger.info(f'[{symbol}] Moderating debate between {len(analyst_reports)} analysts')
+            consensus = self.prediction_service.debate_and_vote(symbol, stock_data, analyst_reports)
+            
+            if not consensus:
+                logger.warning(f'Failed to reach consensus for {symbol}')
+                return
+
+            # --- STORAGE PHASE ---
             # Get current price for initial_price
             current_price = stock_data['current_price']
-
-            # Map prediction direction to database format
-            direction_map = {
-                'UP': 'up',
-                'DOWN': 'down',
-                'NEUTRAL': 'neutral'
-            }
-            predicted_direction = direction_map.get(
-                prediction['prediction'].upper(),
-                'neutral'
-            )
-
-            # Store prediction in database
-            # Target time is 7 days from now (can be configured later)
             from datetime import timedelta
             target_time = datetime.now() + timedelta(days=7)
 
+            # Map prediction direction to database format
+            direction_map = {'UP': 'up', 'DOWN': 'down', 'NEUTRAL': 'neutral'}
+            
+            # Store individual analyst reports
+            for report in analyst_reports:
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=report['provider'],
+                    predicted_direction=direction_map.get(report['prediction'].upper(), 'neutral'),
+                    confidence=report['confidence'],
+                    reasoning=report['reasoning'],
+                    initial_price=current_price,
+                    target_time=target_time
+                )
+
+            # Store the final consensus prediction
             prediction_id = db.add_prediction(
                 cycle_id=cycle_id,
                 stock_id=stock_id,
-                provider=prediction['provider'],
-                predicted_direction=predicted_direction,
-                confidence=prediction['confidence'],
-                reasoning=prediction['reasoning'],
+                provider=f"{consensus['provider']}-consensus",
+                predicted_direction=direction_map.get(consensus['prediction'].upper(), 'neutral'),
+                confidence=consensus['confidence'],
+                reasoning=consensus['reasoning'],
                 initial_price=current_price,
                 target_time=target_time
             )
 
-            logger.info(f'Generated prediction for {symbol}: {predicted_direction} (confidence: {prediction["confidence"]:.2f})')
-            # Note: prediction_added event is auto-emitted by db.add_prediction()
+            logger.info(f'Consensus reached for {symbol}: {consensus["prediction"]} (confidence: {consensus["confidence"]:.2f})')
+
+        except Exception as e:
+            logger.error(f'Error processing stock {symbol}: {e}', exc_info=True)
 
         except Exception as e:
             logger.error(f'Error processing stock {symbol}: {e}', exc_info=True)

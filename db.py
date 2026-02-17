@@ -62,7 +62,7 @@ class ForesightDB:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS stocks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ticker TEXT NOT NULL UNIQUE,
+                    ticker TEXT NOT NULL UNIQUE COLLATE NOCASE,
                     name TEXT,
                     first_discovered TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     times_predicted INTEGER DEFAULT 0,
@@ -258,6 +258,7 @@ class ForesightDB:
 
     def add_stock(self, ticker: str, name: str = None, metadata: Dict = None) -> int:
         """Add or update a stock ticker"""
+        ticker = ticker.upper()
         with self.get_connection() as conn:
             # Try to insert, on conflict update
             cursor = conn.execute("""
@@ -805,7 +806,7 @@ class ForesightDB:
                 SELECT
                     provider,
                     COUNT(*) as total_predictions,
-                    SUM(CASE WHEN accuracy = 1.0 THEN 1 ELSE 0 END) as correct,
+                    SUM(CASE WHEN accuracy = 1.0 THEN 1 ELSE 0 END) as correct_predictions,
                     AVG(accuracy) as accuracy_rate,
                     AVG(confidence) as avg_confidence
                 FROM predictions

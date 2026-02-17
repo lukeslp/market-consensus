@@ -271,7 +271,7 @@ class TestAPIWorkflow:
 
         # Add stock and prediction manually
         stock_id = db.add_stock('AAPL', 'Apple Inc.')
-        db.add_prediction(
+        pred_id = db.add_prediction(
             cycle_id=cycle_id,
             stock_id=stock_id,
             provider='anthropic',
@@ -280,6 +280,9 @@ class TestAPIWorkflow:
             initial_price=150.0,
             target_time=datetime.now()
         )
+        
+        # Evaluate prediction so it shows in stats
+        db.evaluate_prediction(pred_id, 155.0, 'up')
 
         # Check stats
         response = client.get('/api/stats')

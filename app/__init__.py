@@ -55,8 +55,12 @@ def create_app(config_class=Config):
     # Initialize and start background worker
     from app.worker import PredictionWorker
     _worker = PredictionWorker(app.config)
-    _worker.start()
-    app.logger.info('Background prediction worker started')
+    
+    if not app.config.get('TESTING'):
+        _worker.start()
+        app.logger.info('Background prediction worker started')
+    else:
+        app.logger.info('Background prediction worker disabled for testing')
 
     # Store worker reference in app for access from routes
     app.worker = _worker

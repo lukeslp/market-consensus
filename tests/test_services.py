@@ -72,7 +72,7 @@ class TestPredictionService:
         from app.services.prediction_service import PredictionService
 
         # Configure mock to return stock list
-        mock_provider_factory.generate.return_value = '["AAPL", "MSFT", "GOOGL"]'
+        mock_provider_factory.complete.return_value.content = '["AAPL", "MSFT", "GOOGL"]'
 
         service = PredictionService(app_context.config)
         stocks = service.discover_stocks(count=3)
@@ -85,7 +85,7 @@ class TestPredictionService:
         from app.services.prediction_service import PredictionService
 
         # Configure mock to raise exception
-        mock_provider_factory.generate.side_effect = Exception("LLM error")
+        mock_provider_factory.complete.side_effect = Exception("LLM error")
 
         service = PredictionService(app_context.config)
         stocks = service.discover_stocks(count=3)
@@ -98,7 +98,7 @@ class TestPredictionService:
         from app.services.prediction_service import PredictionService
 
         # Configure mock response
-        mock_provider_factory.generate.return_value = json.dumps({
+        mock_provider_factory.complete.return_value.content = json.dumps({
             'prediction': 'UP',
             'confidence': 0.75,
             'reasoning': 'Strong upward trend'
@@ -119,7 +119,7 @@ class TestPredictionService:
         from app.services.prediction_service import PredictionService
 
         # Configure mock to return invalid JSON
-        mock_provider_factory.generate.return_value = 'Not valid JSON'
+        mock_provider_factory.complete.return_value.content = 'Not valid JSON'
 
         service = PredictionService(app_context.config)
         prediction = service.generate_prediction('AAPL', {})
@@ -132,7 +132,7 @@ class TestPredictionService:
         from app.services.prediction_service import PredictionService
 
         # Configure mock to return confidence score
-        mock_provider_factory.generate.return_value = '0.82'
+        mock_provider_factory.complete.return_value.content = '0.82'
 
         service = PredictionService(app_context.config)
         predictions = [
@@ -150,7 +150,7 @@ class TestPredictionService:
         from app.services.prediction_service import PredictionService
 
         # Configure mock to return out-of-range value
-        mock_provider_factory.generate.return_value = '1.5'
+        mock_provider_factory.complete.return_value.content = '1.5'
 
         service = PredictionService(app_context.config)
         confidence = service.synthesize_confidence([])

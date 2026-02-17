@@ -26,8 +26,15 @@ class Config:
     # LLM Providers
     PROVIDERS = {
         'discovery': os.environ.get('DISCOVERY_PROVIDER', 'xai'),      # Grok for stock discovery
-        'prediction': os.environ.get('PREDICTION_PROVIDER', 'xai'),    # Grok for predictions (temp workaround)
-        'synthesis': os.environ.get('SYNTHESIS_PROVIDER', 'xai')       # Grok for synthesis (temp workaround)
+        'prediction': os.environ.get('PREDICTION_PROVIDER', 'anthropic'), # Claude for technical analysis
+        'synthesis': os.environ.get('SYNTHESIS_PROVIDER', 'gemini')    # Gemini for debate/consensus
+    }
+
+    # Model overrides (optional, leave empty for provider defaults)
+    MODEL_OVERRIDES = {
+        'xai': 'grok-2-1212',
+        'anthropic': 'claude-3-5-sonnet-20241022',
+        'gemini': 'gemini-2.0-flash-exp'
     }
 
     # API Keys (loaded from environment)

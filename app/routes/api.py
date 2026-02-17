@@ -152,14 +152,18 @@ def stream():
     """SSE endpoint for real-time prediction updates"""
     # Import ForesightDB to create instance directly (avoid Flask g context in generator)
     from db import ForesightDB
+    
+    # Capture config values before generator to avoid context issues
+    db_path = current_app.config['DB_PATH']
+    sse_retry = current_app.config.get('SSE_RETRY', 3000)
 
     def generate():
         """Generate SSE events from database event queue"""
         # Create direct database instance (not using Flask g)
-        db = ForesightDB(current_app.config['DB_PATH'])
+        db = ForesightDB(db_path)
 
         # Set SSE retry interval
-        yield f"retry: {current_app.config['SSE_RETRY']}\n\n"
+        yield f"retry: {sse_retry}\n\n"
 
         # Send initial connection event
         yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})}\n\n"
@@ -263,28 +267,34 @@ def start_cycle():
 
     # Check if worker is running
     worker = current_app.worker
-    if not worker.is_alive():
+    if not worker.is_alive() and not current_app.config.get('TESTING'):
         return jsonify({
             'error': 'Background worker is not running',
             'message': 'Restart the application to start the worker'
         }), 503
 
+    # Create new cycle
+    cycle_id = db.create_cycle()
+
     # Trigger an immediate cycle in the worker by calling _run_prediction_cycle directly
     # This runs in a background thread so we don't block the response
+    app = current_app._get_current_object()
     def trigger_cycle():
-        try:
-            worker._run_prediction_cycle()
-            current_app.logger.info('Manual cycle triggered via /api/cycle/start')
-        except Exception as e:
-            current_app.logger.error(f'Manual cycle error: {e}', exc_info=True)
+        with app.app_context():
+            try:
+                worker._run_prediction_cycle(cycle_id=cycle_id)
+                app.logger.info(f'Manual cycle {cycle_id} triggered via /api/cycle/start')
+            except Exception as e:
+                app.logger.error(f'Manual cycle error: {e}', exc_info=True)
 
     cycle_thread = threading.Thread(target=trigger_cycle, daemon=True)
     cycle_thread.start()
 
     return jsonify({
-        'status': 'cycle_triggered',
-        'message': 'Prediction cycle triggered immediately'
-    }), 200
+        'status': 'started',
+        'cycle_id': cycle_id,
+        'message': 'Prediction cycle started'
+    }), 201
 
 
 @api_bp.route('/cycle/<int:cycle_id>/stop', methods=['POST'])
