@@ -321,8 +321,8 @@ class StockDetail {
     markerEnter.append('path')
       .attr('fill', '#0f172a')
       .attr('d', d => {
-        if (d.prediction === 'up') return 'M 0,-2.5 L -2,0.5 L 2,0.5 Z';
-        if (d.prediction === 'down') return 'M 0,2.5 L -2,-0.5 L 2,-0.5 Z';
+        if (d.predicted_direction === 'up') return 'M 0,-2.5 L -2,0.5 L 2,0.5 Z';
+        if (d.predicted_direction === 'down') return 'M 0,2.5 L -2,-0.5 L 2,-0.5 Z';
         return '';
       })
       .attr('pointer-events', 'none'); // Hit area handles all interaction
@@ -433,14 +433,14 @@ class StockDetail {
 
   showPredictionTooltip(event, d) {
     const formatDate = d3.timeFormat('%B %d, %Y');
-    const predictionColor = d.prediction === 'up' ? this.colors.up :
-                           d.prediction === 'down' ? this.colors.down :
+    const predictionColor = d.predicted_direction === 'up' ? this.colors.up :
+                           d.predicted_direction === 'down' ? this.colors.down :
                            this.colors.flat;
 
     const html = `
       <div style="font-weight: 600; margin-bottom: 4px;">Prediction</div>
       <div style="color: ${this.colors.textMuted}; font-size: 11px; margin-bottom: 8px;">${formatDate(d.date)}</div>
-      <div style="color: ${predictionColor}; text-transform: uppercase; font-weight: 600;">${d.prediction}</div>
+      <div style="color: ${predictionColor}; text-transform: uppercase; font-weight: 600;">${d.predicted_direction}</div>
       <div style="margin-top: 6px; font-size: 11px;">
         Confidence: <span style="color: ${this.colors.text};">${(d.confidence * 100).toFixed(0)}%</span>
       </div>

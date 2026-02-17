@@ -56,6 +56,7 @@ def stats():
         'total_cycles': len(recent_cycles),
         'completed_cycles': len(completed_cycles),
         'overall_accuracy': summary.get('overall_accuracy', 0.0),
+        'total_stocks': summary.get('total_stocks', 0),
         'by_provider': leaderboard
     })
 
