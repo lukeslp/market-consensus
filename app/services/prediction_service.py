@@ -69,13 +69,17 @@ Focus on stocks with:
 Return ONLY a JSON array of ticker symbols, nothing else.
 Example: ["AAPL", "MSFT", "TSLA"]"""
 
-            logger.debug(f'Calling provider.generate() for stock discovery')
-            response = provider.generate(prompt)
-            logger.debug(f'Provider returned: {response[:200]}...')
+            # Use standard provider interface: complete(messages)
+            from llm_providers import Message
+            logger.debug(f'Calling provider.complete() for stock discovery')
+            response = provider.complete(
+                messages=[Message(role='user', content=prompt)]
+            )
+            logger.debug(f'Provider returned: {response.content[:200]}...')
 
-            # Parse JSON response
+            # Parse JSON response (response is CompletionResponse object)
             import json
-            symbols = json.loads(response)
+            symbols = json.loads(response.content)
             logger.debug(f'Parsed symbols: {symbols}')
 
             if isinstance(symbols, list):
