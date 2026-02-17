@@ -294,8 +294,17 @@ class StockDetail {
       .attr('class', 'prediction-marker')
       .style('opacity', 0);
 
-    // Marker circle
+    // Invisible hit area for touch (44x44px minimum for iOS)
     markerEnter.append('circle')
+      .attr('class', 'hit-area')
+      .attr('r', 22)  // 44px diameter (iOS minimum)
+      .attr('fill', 'transparent')
+      .attr('stroke', 'none')
+      .attr('pointer-events', 'all');
+
+    // Visual marker circle (smaller, sits on top visually)
+    markerEnter.append('circle')
+      .attr('class', 'visual-marker')
       .attr('r', 6)
       .attr('fill', d => {
         if (d.prediction === 'up') return this.colors.up;
@@ -303,16 +312,18 @@ class StockDetail {
         return this.colors.flat;
       })
       .attr('stroke', '#0f172a')
-      .attr('stroke-width', 2);
+      .attr('stroke-width', 2)
+      .attr('pointer-events', 'none'); // Hit area handles all interaction
 
-    // Prediction arrow
+    // Prediction arrow (unchanged)
     markerEnter.append('path')
       .attr('fill', '#0f172a')
       .attr('d', d => {
         if (d.prediction === 'up') return 'M 0,-2.5 L -2,0.5 L 2,0.5 Z';
         if (d.prediction === 'down') return 'M 0,2.5 L -2,-0.5 L 2,-0.5 Z';
         return '';
-      });
+      })
+      .attr('pointer-events', 'none'); // Hit area handles all interaction
 
     // Merge and update
     const markerMerge = markerEnter.merge(markers);
