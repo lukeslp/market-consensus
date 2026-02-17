@@ -7,7 +7,7 @@ import threading
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 
-from .db import ForesightDB
+from db import ForesightDB
 from .services.stock_service import StockService
 from .services.prediction_service import PredictionService
 

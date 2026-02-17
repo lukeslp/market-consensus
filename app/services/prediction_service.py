@@ -120,7 +120,7 @@ Return your final decision as JSON:
             return {
                 'provider': self.config['PROVIDERS']['synthesis'],
                 'model': getattr(provider, 'model', 'unknown'),
-                'prediction': str(result.get('consensus_direction', 'NEUTRAL')).upper(),
+                'prediction': str(result.get('consensus_direction', 'NEUTRAL')).lower(),
                 'confidence': result.get('consensus_confidence', 0.5),
                 'reasoning': result.get('synthesis_reasoning', 'No synthesis reasoning provided')
             }
@@ -261,7 +261,7 @@ Return your response as JSON:
             return {
                 'provider': provider_name,
                 'model': model or getattr(target_provider, 'model', 'unknown'),
-                'prediction': str(prediction.get('prediction', 'NEUTRAL')).upper(),
+                'prediction': str(prediction.get('prediction', 'NEUTRAL')).lower(),
                 'confidence': prediction.get('confidence', 0.5),
                 'reasoning': prediction.get('reasoning', 'No reasoning provided')
             }
