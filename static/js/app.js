@@ -240,13 +240,21 @@ class ForesightDashboard {
   closeDetail() {
     const panel = document.getElementById('stock-detail');
     const backdrop = document.getElementById('detail-backdrop');
-    if (panel) panel.setAttribute('aria-hidden', 'true');
+    if (panel) {
+      panel.setAttribute('aria-hidden', 'true');
+      panel.removeAttribute('aria-modal');
+    }
     if (backdrop) {
       backdrop.classList.remove('visible');
       setTimeout(() => { backdrop.style.display = 'none'; }, 300);
     }
     this.selectedStock = null;
     if (this.grid) this.grid.highlightTile(null);
+    // Return focus to the tile that triggered the panel open
+    if (this._lastFocusedTile && this._lastFocusedTile.focus) {
+      this._lastFocusedTile.focus();
+      this._lastFocusedTile = null;
+    }
   }
 
   updateGrid(predictions) {
