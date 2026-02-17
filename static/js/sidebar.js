@@ -116,6 +116,7 @@ class Sidebar {
 
     cardEnter.append('div')
       .attr('class', 'stat-icon')
+      .attr('aria-hidden', 'true')
       .style('font-size', '24px')
       .style('margin-bottom', '8px')
       .text(d => d.icon);
