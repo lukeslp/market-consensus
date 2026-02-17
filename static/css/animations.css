@@ -166,6 +166,20 @@
   animation: rotate 1s linear infinite;
 }
 
+/* ===== SPIN ANIMATION (Loading Spinner) ===== */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
 /* ===== BOUNCE ANIMATION (Alerts) ===== */
 @keyframes bounce {
   0%, 100% {

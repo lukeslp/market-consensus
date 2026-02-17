@@ -306,11 +306,19 @@ class ForesightDashboard {
   }
 
   showEmptyState() {
-    const statusEl = document.querySelector('#status');
-    if (statusEl) {
-      statusEl.innerHTML = `
-        <h2>No Active Predictions</h2>
-        <p>Waiting for the next prediction cycle to start...</p>
+    const gridEl = document.querySelector('#stock-grid');
+    if (gridEl) {
+      gridEl.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 400px; gap: 20px;">
+          <div class="loading-spinner" style="width: 40px; height: 40px; border: 3px solid var(--glass-border); border-top: 3px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+          <h2 style="margin: 0; color: var(--text-primary);">Waiting for Predictions</h2>
+          <p style="margin: 0; color: var(--text-secondary); text-align: center; max-width: 300px;">
+            The prediction engine is running its first cycle. This typically takes 30-60 seconds.
+          </p>
+          <p style="margin: 0; color: var(--text-secondary); font-size: 0.9em;">
+            Or click "Start New Cycle" to trigger immediately
+          </p>
+        </div>
       `;
     }
   }
