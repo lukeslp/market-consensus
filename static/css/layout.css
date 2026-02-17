@@ -1,169 +1,64 @@
-/* ─── Dashboard Layout ───────────────────── */
-
-.dashboard-container {
+.topbar {
   display: grid;
-  grid-template-columns: 260px 1fr;
-  grid-template-areas: "sidebar main";
-  gap: 1.5rem;
-  padding: 1.5rem 2rem 3rem; /* 3rem bottom for ticker bar */
-  max-width: 1900px;
-  margin: 0 auto;
-  flex: 1;
-}
-
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: 1fr auto;
   gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1.1rem;
 }
 
-main[role="main"] {
-  grid-area: main;
-  min-height: 600px;
+.workspace {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1rem;
+  padding: 1rem 1rem 3rem;
+  max-width: 1800px;
+  margin: 0 auto;
 }
 
-/* ─── Detail Panel ───────────────────────── */
-.detail-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 520px;
-  height: 100vh;
-  background: var(--bg-secondary);
-  border-left: var(--rule-width) solid var(--glass-border-strong);
-  box-shadow: -12px 0 60px rgba(0,0,0,0.7);
-  transform: translateX(100%);
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1000;
-  overflow: hidden;
-  will-change: transform;
-  display: flex;
-  flex-direction: column;
+.canvas {
+  display: grid;
+  gap: 0.8rem;
+  align-content: start;
 }
 
-.detail-panel[aria-hidden="false"] {
-  transform: translateX(0);
+.insights {
+  display: grid;
+  gap: 0.8rem;
+  align-content: start;
 }
 
-.detail-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--glass-border) transparent;
-}
-
-.detail-content::-webkit-scrollbar {
-  width: 4px;
-}
-
-.detail-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.detail-content::-webkit-scrollbar-thumb {
-  background: var(--glass-border);
-  border-radius: 2px;
-}
-
-/* Backdrop for detail panel */
-.detail-panel-backdrop {
-  display: none; /* JS shows/hides this */
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 999;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.detail-panel-backdrop.visible {
-  opacity: 1;
-}
-
-/* ─── Sidebar Panels ─────────────────────── */
-.glass-panel {
-  background: var(--glass-bg);
-  border: var(--rule-width) solid var(--glass-border);
-  border-radius: var(--border-radius-md);
-  padding: 1.25rem;
-}
-
-/* ─── Cycle Panel specifics ──────────────── */
-.cycle-panel {}
-
-/* ─── Leaderboard (D3 target) ────────────── */
-#provider-stats .sidebar-stats {
+#leaderboard-host .sidebar-stats {
   margin-bottom: 0.5rem;
 }
 
-#provider-stats .sidebar-leaderboard {
+#leaderboard-host .sidebar-leaderboard {
   width: 100%;
 }
 
-/* ─── Stock Grid ─────────────────────────── */
-#stock-grid {
-  min-height: 600px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-#stock-grid svg {
-  width: 100%;
-  height: auto;
-}
-
-/* Tile styles for D3-rendered SVG elements */
-/* These provide CSS fallbacks; D3 sets most styles inline */
-.tile {
-  cursor: pointer;
-  outline: none;
-}
-
-/* ─── Responsive ─────────────────────────── */
-
-/* Tablet */
-@media (max-width: 1100px) {
-  .dashboard-container {
+@media (max-width: 1220px) {
+  .workspace {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "main"
-      "sidebar";
-    padding: 1rem;
   }
-  .sidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    overflow: visible;
-  }
-  .sidebar > .panel {
-    flex: 1 1 220px;
-  }
-  .detail-panel {
-    width: 100%;
-    max-width: 520px;
+
+  .insights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* Mobile */
-@media (max-width: 640px) {
-  .dashboard-container {
-    padding: 0.75rem 0.75rem 3rem;
-    gap: 0.75rem;
+@media (max-width: 720px) {
+  .topbar {
+    grid-template-columns: 1fr;
   }
-  .sidebar {
-    flex-direction: column;
+
+  .insights {
+    grid-template-columns: 1fr;
   }
-  .sidebar > .panel {
-    flex: unset;
+
+  .workspace {
+    padding: 0.7rem 0.7rem 3rem;
   }
-  .detail-panel {
-    width: 100%;
-    max-width: none;
-  }
-  .panel {
-    padding: 1rem;
+
+  .grid-stage {
+    min-height: 460px;
   }
 }

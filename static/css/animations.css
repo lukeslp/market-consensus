@@ -1,162 +1,37 @@
-/* ─── Oracle Terminal Animations ────────── */
-/* GPU-accelerated, reduced-motion aware     */
-
-/* ─── Heartbeat (connection status) ──────── */
-@keyframes status-heartbeat {
-  0%, 100% { box-shadow: 0 0 4px var(--stock-up-muted); opacity: 1; }
-  40%       { box-shadow: 0 0 10px var(--stock-up);     opacity: 0.8; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
-/* ─── Skeleton loader ────────────────────── */
-@keyframes skeleton-sweep {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@keyframes ticker-slide {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
-/* ─── Ticker tape scroll ─────────────────── */
-@keyframes ticker-scroll {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+@keyframes sweep {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
 
-/* ─── Tile: new prediction flash ──────────── */
-/* GPU-composited opacity pulse (avoids main-thread filter rasterization) */
-@keyframes tile-oracle-flash {
-  0%   { opacity: 1; }
-  30%  { opacity: 0.72; }
-  60%  { opacity: 0.95; }
+@keyframes tile-flash {
+  0% { opacity: 1; }
+  30% { opacity: 0.65; }
   100% { opacity: 1; }
 }
 
-.tile-new-prediction {
-  animation: tile-oracle-flash 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+.tile-flash {
+  animation: tile-flash 0.7s ease;
 }
 
-/* ─── Tile: price direction flash ────────── */
-@keyframes price-flash-up {
-  0%   { opacity: 1; }
-  40%  { opacity: 0.7; }
-  100% { opacity: 1; }
-}
-
-@keyframes price-flash-down {
-  0%   { opacity: 1; }
-  40%  { opacity: 0.75; }
-  100% { opacity: 1; }
-}
-
-.tile-price-up   { animation: price-flash-up   0.7s ease-out; }
-.tile-price-down { animation: price-flash-down 0.7s ease-out; }
-
-/* ─── Detail panel slide ─────────────────── */
-.detail-panel {
-  will-change: transform;
-  backface-visibility: hidden;
-}
-
-/* ─── Fade in/out ─────────────────────────── */
-@keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-@keyframes fade-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
-
-.fade-in  { animation: fade-in  0.3s ease-out; }
-.fade-out { animation: fade-out 0.25s ease-out; }
-
-/* ─── Slide up ───────────────────────────── */
-@keyframes slide-up {
-  from { transform: translateY(12px); opacity: 0; }
-  to   { transform: translateY(0);   opacity: 1; }
-}
-
-.slide-up { animation: slide-up 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
-
-/* ─── Toast notification ─────────────────── */
-@keyframes toast-enter {
-  from { transform: translateY(-8px); opacity: 0; }
-  to   { transform: translateY(0);   opacity: 1; }
-}
-
-@keyframes toast-exit {
-  from { transform: translateY(0);   opacity: 1; }
-  to   { transform: translateY(-8px); opacity: 0; }
-}
-
-.toast-notification {
-  animation: toast-enter 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ─── Phase step pulse (active) ──────────── */
-@keyframes phase-active-pulse {
-  0%, 100% { background: var(--accent-glow); }
-  50%       { background: rgba(200, 149, 42, 0.3); }
-}
-
-.phase-step.active {
-  animation: phase-active-pulse 1.8s ease-in-out infinite;
-}
-
-/* Override for the border — needs to stay static */
-.phase-step.active {
-  border-left-color: var(--accent-primary);
-}
-
-/* ─── Connecting spinner ─────────────────── */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-.loading-spinner {
-  animation: spin 0.9s linear infinite;
-}
-
-/* ─── Accuracy bar fill ──────────────────── */
-@keyframes accuracy-fill-in {
-  from { transform: scaleX(0); transform-origin: left; }
-  to   { transform: scaleX(1); transform-origin: left; }
-}
-
-.accuracy-fill {
-  animation: accuracy-fill-in 0.9s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ─── GPU hints ──────────────────────────── */
-/* Only promote the element that actually animates transform */
-.detail-panel {
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-/* ─── Reduced Motion ─────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.05ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 
   .ticker-content {
-    animation: none;
-  }
-
-  .status-indicator.connected {
-    animation: none;
-    box-shadow: 0 0 4px var(--stock-up-muted);
-  }
-
-  .phase-step.active {
-    animation: none;
-  }
-
-  .tile-new-prediction,
-  .tile-price-up,
-  .tile-price-down {
-    animation: none;
+    animation: none !important;
   }
 }

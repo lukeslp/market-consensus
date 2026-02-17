@@ -3,7 +3,9 @@ Foresight - Stock Prediction Dashboard
 Application factory pattern
 """
 import sys
+import os
 from pathlib import Path
+import fcntl
 
 # Add shared library to path
 if '/home/coolhand/shared' not in sys.path:
@@ -21,6 +23,23 @@ from app.errors import register_error_handlers
 
 # Global worker instance
 _worker = None
+_worker_lock_fd = None
+
+
+def _try_acquire_worker_lock(lock_path: str = '/tmp/foresight.worker.lock') -> bool:
+    """
+    Acquire a non-blocking cross-process lock so only one Gunicorn worker
+    starts the background prediction thread.
+    """
+    global _worker_lock_fd
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _worker_lock_fd = fd
+        return True
+    except BlockingIOError:
+        os.close(fd)
+        return False
 
 
 def create_app(config_class=Config):
@@ -57,8 +76,11 @@ def create_app(config_class=Config):
     _worker = PredictionWorker(app.config)
     
     if not app.config.get('TESTING'):
-        _worker.start()
-        app.logger.info('Background prediction worker started')
+        if _try_acquire_worker_lock():
+            _worker.start()
+            app.logger.info('Background prediction worker started')
+        else:
+            app.logger.info('Background worker lock held by another process; skipping worker start')
     else:
         app.logger.info('Background prediction worker disabled for testing')
 
@@ -75,9 +97,17 @@ def create_app(config_class=Config):
 
 def shutdown_worker(worker, logger):
     """Shutdown worker gracefully"""
+    global _worker_lock_fd
     if worker and worker.is_alive():
         logger.info('Shutting down prediction worker...')
         worker.stop()
+    if _worker_lock_fd is not None:
+        try:
+            fcntl.flock(_worker_lock_fd, fcntl.LOCK_UN)
+            os.close(_worker_lock_fd)
+        except Exception:
+            pass
+        _worker_lock_fd = None
 
 
 def setup_logging(app):

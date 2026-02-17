@@ -1,594 +1,471 @@
-/**
- * Foresight Dashboard - Main Application
- * Integrates StockGrid, StockDetail, and Sidebar visualizations with SSE streaming
- */
-
-// Detect app root path so API calls work behind any URL prefix (e.g. /foresight/)
 const API_ROOT = (() => {
   const p = window.location.pathname;
-  return p.endsWith('/') ? p : p.substring(0, p.lastIndexOf('/') + 1);
+  return p.endsWith('/') ? p : p.slice(0, p.lastIndexOf('/') + 1);
 })();
 
 class ForesightDashboard {
   constructor() {
+    this.api = new window.ForesightAPI(API_ROOT.replace(/\/$/, ''));
     this.grid = null;
     this.detail = null;
     this.sidebar = null;
     this.eventSource = null;
     this.currentCycle = null;
-    this.selectedStock = null;
+    this.selectedSymbol = null;
+    this.tickerItems = [];
 
     this.init();
   }
 
   init() {
-    console.log('Foresight Dashboard initializing...');
-
-    // Check D3.js availability
     if (typeof d3 === 'undefined') {
-      console.error('D3.js not loaded. Include D3.js v7 before app.js');
-      this.showError('Visualization library not loaded');
+      this.toast('D3 failed to load');
       return;
     }
 
-    // Initialize visualizations
-    this.initializeVisualizations();
+    this.installPhaseController();
+    this.mountVisuals();
+    this.bindUI();
+    this.bootstrap();
+  }
 
-    // Load initial data
-    this.loadCurrentCycle();
-    this.loadStats();
+  installPhaseController() {
+    const label = document.getElementById('phase-label');
+    const steps = document.querySelectorAll('.phase-step');
+    const order = ['discovery', 'analysis', 'debate', 'consensus'];
 
-    // Setup SSE streaming
-    this.connectToStream();
+    window.setPhase = (phase) => {
+      if (label) label.textContent = phase.toUpperCase();
+      const idx = order.indexOf(phase);
+      steps.forEach((el) => {
+        const s = el.dataset.phase;
+        const sIdx = order.indexOf(s);
+        el.classList.toggle('active', s === phase);
+        el.classList.toggle('done', sIdx >= 0 && idx >= 0 && sIdx < idx);
+      });
+    };
 
-    // Keyboard navigation
-    this.setupKeyboardNav();
+    window.resetPhases = () => {
+      if (label) label.textContent = 'IDLE';
+      steps.forEach((el) => el.classList.remove('active', 'done'));
+    };
+  }
 
-    // Wire cycle control buttons
+  mountVisuals() {
+    this.grid = new window.StockGrid('#grid-stage', {
+      columns: 10,
+      onTileClick: (stock) => this.selectStock(stock.symbol)
+    });
+
+    const detailHost = document.getElementById('detail-visual');
+    if (detailHost) {
+      detailHost.innerHTML = '';
+      this.detail = new window.StockDetail('#detail-visual', { width: 820, height: 390 });
+    }
+
+    this.sidebar = new window.Sidebar('#leaderboard-host', { width: 280 });
+  }
+
+  bindUI() {
     const startBtn = document.getElementById('start-cycle-btn');
-    const stopBtn  = document.getElementById('stop-cycle-btn');
+    const stopBtn = document.getElementById('stop-cycle-btn');
+    const closeBtn = document.getElementById('close-detail');
+    const backdrop = document.getElementById('detail-backdrop');
+    const tickerBtn = document.getElementById('ticker-pause-btn');
+    const ticker = document.getElementById('ticker-content');
 
-    if (startBtn) {
-      startBtn.addEventListener('click', async () => {
-        startBtn.disabled = true;
-        if (stopBtn) stopBtn.disabled = false;
-        try {
-          await fetch(`${API_ROOT}api/cycle/start`, { method: 'POST' });
-        } catch (e) {
-          console.error('Failed to start cycle:', e);
-          startBtn.disabled = false;
-          if (stopBtn) stopBtn.disabled = true;
-        }
-      });
-    }
-
-    if (stopBtn) {
-      stopBtn.addEventListener('click', async () => {
-        if (!this.currentCycle) return;
-        try {
-          await fetch(`${API_ROOT}api/cycle/${this.currentCycle.id}/stop`, { method: 'POST' });
-        } catch (e) {
-          console.error('Failed to stop cycle:', e);
-        }
-        stopBtn.disabled = true;
-        if (startBtn) startBtn.disabled = false;
-        if (window.resetPhases) window.resetPhases();
-      });
-    }
-  }
-
-  initializeVisualizations() {
-    // Stock Grid
-    const gridContainer = d3.select('#stock-grid');
-    if (!gridContainer.empty()) {
-      this.grid = new StockGrid('#stock-grid', {
-        columns: 10,
-        tileSize: 120,
-        gap: 8,
-        onTileClick: (stock) => this.selectStock(stock.symbol)
-      });
-    }
-
-    // Stock Detail — mount inside the body section, not the full aside
-    // (the aside contains a close button header that must remain interactive)
-    const detailContainer = d3.select('#detail-body');
-    if (!detailContainer.empty()) {
-      detailContainer.html(''); // clear loading skeleton placeholder
-      this.detail = new StockDetail('#detail-body', {
-        width: 800,
-        height: 400
-      });
-    }
-
-    // Sidebar — mount inside the leaderboard section, not the full sidebar
-    const sidebarContainer = d3.select('#provider-stats');
-    if (!sidebarContainer.empty()) {
-      // Clear the loading skeleton
-      sidebarContainer.html('');
-      this.sidebar = new Sidebar('#provider-stats', {
-        width: 240
-      });
-    }
-  }
-
-  async loadCurrentCycle() {
-    try {
-      const response = await fetch(`${API_ROOT}api/current`);
-      const data = await response.json();
-
-      if (data.cycle) {
-        this.currentCycle = data.cycle;
-
-        // Clear empty-state overlay if present
-        const overlay = document.querySelector('#stock-grid .empty-state');
-        if (overlay) overlay.remove();
-
-        // Update cycle info in sidebar
-        this.updateCycleInfo(data.cycle);
-
-        // API returns predictions as separate top-level field, not in cycle.stocks
-        this.updateGrid(data.predictions || []);
-      } else {
-        console.log('No active cycle');
-        this.showEmptyState();
+    startBtn?.addEventListener('click', async () => {
+      this.setCycleButtonState(true);
+      try {
+        await this.api.startCycle();
+      } catch (err) {
+        this.toast('Failed to start cycle');
+        this.setCycleButtonState(false);
       }
-    } catch (error) {
-      console.error('Failed to load current cycle:', error);
-      this.showError('Failed to load prediction data');
+    });
+
+    stopBtn?.addEventListener('click', async () => {
+      if (!this.currentCycle?.id) return;
+      try {
+        await this.api.stopCycle(this.currentCycle.id);
+      } catch (err) {
+        this.toast('Failed to stop cycle');
+      }
+      this.setCycleButtonState(false);
+      window.resetPhases?.();
+    });
+
+    closeBtn?.addEventListener('click', () => this.closeDetail());
+    backdrop?.addEventListener('click', () => this.closeDetail());
+
+    tickerBtn?.addEventListener('click', () => {
+      const paused = tickerBtn.getAttribute('aria-pressed') === 'true';
+      tickerBtn.setAttribute('aria-pressed', paused ? 'false' : 'true');
+      tickerBtn.textContent = paused ? 'Pause' : 'Play';
+      tickerBtn.setAttribute('aria-label', paused ? 'Pause ticker' : 'Resume ticker');
+      ticker?.classList.toggle('paused', !paused);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && this.selectedSymbol) {
+        this.closeDetail();
+      }
+
+      const inInput = /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.isContentEditable;
+      if (!inInput && (event.key === 'r' || event.key === 'R')) {
+        this.reload();
+        this.announce('Dashboard refreshed');
+      }
+    });
+  }
+
+  async bootstrap() {
+    await this.reload();
+    await this.loadProviderHealth();
+    this.providerHealthTimer = setInterval(() => this.loadProviderHealth(), 15000);
+    this.connectStream();
+  }
+
+  async reload() {
+    await Promise.all([this.loadCurrent(), this.loadStats()]);
+  }
+
+  async loadCurrent() {
+    try {
+      const payload = await this.api.current();
+      if (!payload?.cycle) {
+        this.currentCycle = null;
+        this.renderCycleCard(null);
+        this.grid.update([]);
+        this.showGridEmpty();
+        return;
+      }
+
+      this.currentCycle = payload.cycle;
+      this.renderCycleCard(payload.cycle);
+      this.hideGridEmpty();
+      this.grid.update(this.predictionsToGrid(payload.predictions || []));
+
+      const active = ['running', 'active'].includes(payload.cycle.status);
+      this.setCycleButtonState(active);
+      if (active) window.setPhase?.('analysis');
+      else window.resetPhases?.();
+    } catch (err) {
+      this.toast('Failed to load current cycle');
+      this.showGridEmpty();
     }
   }
 
-  updateCycleInfo(cycle) {
-    const infoEl = document.getElementById('current-cycle-info');
-    if (!infoEl) return;
+  predictionsToGrid(predictions) {
+    return predictions.map((p) => ({
+      symbol: p.ticker,
+      name: p.name,
+      price: p.predicted_price ?? p.initial_price,
+      prediction: p.predicted_direction,
+      confidence: p.confidence,
+      accuracy: p.accuracy,
+      provider: p.provider
+    }));
+  }
 
-    const started = cycle.started_at
-      ? new Date(cycle.started_at).toLocaleTimeString()
-      : '—';
-    const status = cycle.status || 'unknown';
+  renderCycleCard(cycle) {
+    const card = document.getElementById('current-cycle-info');
+    if (!card) return;
 
-    infoEl.innerHTML = `
-      <p class="cycle-status">Cycle #${cycle.id} &mdash; <span style="color:var(--accent-primary);text-transform:uppercase;font-size:.7rem;letter-spacing:.1em;">${status}</span></p>
-      <p style="margin:.25rem 0 0;color:var(--text-muted);font-family:var(--font-data);font-size:.7rem;">Started ${started}</p>
-    `;
+    if (!cycle) {
+      card.innerHTML = '<p>No active cycle</p>';
+      return;
+    }
 
-    // Sync button state and phase display
-    const running = status === 'running' || status === 'active';
-    this.setCycleButtonState(running);
-    if (running && window.setPhase) window.setPhase('analysis'); // best guess mid-cycle
-    if (!running && window.resetPhases) window.resetPhases();
+    const started = cycle.started_at ? new Date(cycle.started_at).toLocaleTimeString() : '--';
+    card.innerHTML = `<p>Cycle #${cycle.id} <b style="color:var(--accent);text-transform:uppercase;">${cycle.status || 'unknown'}</b></p><p style="margin-top:.35rem;">Started ${started}</p>`;
   }
 
   async loadStats() {
     try {
-      const response = await fetch(`${API_ROOT}api/stats`);
-      const data = await response.json();
+      const stats = await this.api.stats();
+      this.sidebar.update(stats);
 
-      if (this.sidebar) {
-        this.sidebar.update(data);
+      const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+
+      set('stat-total-predictions', Number(stats.total_predictions ?? 0).toLocaleString());
+      set('stat-overall-accuracy', Number.isFinite(+stats.overall_accuracy) ? `${(+stats.overall_accuracy * 100).toFixed(1)}%` : '--');
+      set('stat-cycles', Number(stats.total_cycles ?? 0).toLocaleString());
+      set('stat-stocks', Number(stats.total_stocks ?? 0).toLocaleString());
+    } catch (err) {
+      this.toast('Failed to load stats');
+    }
+  }
+
+  async loadProviderHealth() {
+    const host = document.getElementById('provider-health');
+    if (!host) return;
+
+    try {
+      const response = await fetch(`${API_ROOT}api/health/providers`);
+      const payload = await response.json();
+      const providers = payload?.providers || {};
+      const runtime = payload?.runtime || {};
+      const merged = {};
+
+      // Configured roles first
+      Object.entries(providers).forEach(([role, info]) => {
+        const key = info?.provider || role;
+        merged[key] = {
+          key,
+          role,
+          status: info?.status || 'error',
+          last_error: info?.last_error || info?.error || null
+        };
+      });
+
+      // Add any runtime-only providers (xai, perplexity, etc.)
+      Object.entries(runtime).forEach(([providerName, info]) => {
+        if (!merged[providerName]) {
+          merged[providerName] = {
+            key: providerName,
+            role: 'runtime',
+            status: info?.healthy ? 'configured' : 'error',
+            last_error: info?.last_error || null
+          };
+        } else if (info?.healthy === false) {
+          // Runtime failure overrides configured-ok surface
+          merged[providerName].status = 'error';
+          merged[providerName].last_error = info?.last_error || merged[providerName].last_error;
+        }
+      });
+
+      const entries = Object.values(merged);
+
+      if (!entries.length) {
+        host.innerHTML = '<p class="provider-health-empty">No provider health data.</p>';
+        return;
       }
 
-      // Update intelligence bar stats
-      const totalPreds = document.getElementById('stat-total-predictions');
-      const overallAcc  = document.getElementById('stat-overall-accuracy');
-      const cyclesEl    = document.getElementById('stat-cycles');
-      const stocksEl    = document.getElementById('stat-stocks');
+      host.innerHTML = entries.map((item) => {
+        const failed = item.status !== 'configured';
+        const name = (item.key || 'unknown').toUpperCase();
+        const state = failed ? 'FAIL' : 'OK';
+        const stateClass = failed ? 'fail' : 'ok';
+        const err = failed ? (item.last_error || 'Unknown provider error') : '';
+        const safeErr = String(err).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `
+          <article class="provider-health-item">
+            <div class="provider-health-head">
+              <span class="provider-name">${name}</span>
+              <span class="provider-state ${stateClass}">${state}</span>
+            </div>
+            ${failed ? `<p class="provider-error">${safeErr}</p>` : ''}
+          </article>
+        `;
+      }).join('');
 
-      if (totalPreds && data.total_predictions !== undefined) {
-        totalPreds.textContent = data.total_predictions.toLocaleString();
+      if (!payload.healthy) {
+        this.setConnectionStatus('reconnecting');
       }
-      if (overallAcc && data.overall_accuracy !== undefined) {
-        overallAcc.textContent = `${(data.overall_accuracy * 100).toFixed(1)}%`;
-      }
-      if (cyclesEl && data.total_cycles !== undefined) {
-        cyclesEl.textContent = data.total_cycles.toLocaleString();
-      }
-      if (stocksEl && data.total_stocks !== undefined) {
-        stocksEl.textContent = data.total_stocks.toLocaleString();
-      }
-    } catch (error) {
-      console.error('Failed to load stats:', error);
+    } catch (err) {
+      host.innerHTML = '<p class="provider-health-empty">Provider health unavailable.</p>';
     }
   }
 
   async selectStock(symbol) {
-    this.selectedStock = symbol;
+    if (!symbol) return;
 
-    // Store the tile that triggered the open so we can return focus on close
-    this._lastFocusedTile = document.activeElement;
+    this.selectedSymbol = symbol;
+    this.lastFocusedTile = document.activeElement;
 
-    // Open panel immediately — don't wait for fetch
-    const panel = document.getElementById('stock-detail');
-    const backdrop = document.getElementById('detail-backdrop');
-    if (panel) {
-      // Show empty/cleared state while loading (don't destroy the D3 SVG via innerHTML)
-      if (this.detail) this.detail.showEmpty();
-      panel.setAttribute('aria-hidden', 'false');
-      panel.setAttribute('aria-modal', 'true');
-      // Focus the close button after the slide-in transition completes
-      setTimeout(() => {
-        const closeBtn = document.getElementById('close-detail');
-        if (closeBtn) closeBtn.focus();
-      }, 360);
+    const drawer = document.getElementById('stock-detail');
+    const detailSymbol = document.getElementById('detail-symbol');
+    if (detailSymbol) detailSymbol.textContent = `${symbol} Detail`;
+    if (drawer) {
+      drawer.setAttribute('aria-hidden', 'false');
+      drawer.setAttribute('aria-modal', 'true');
     }
-    if (backdrop) {
-      backdrop.style.display = 'block';
-      backdrop.offsetHeight; // force reflow for CSS transition
-      backdrop.classList.add('visible');
-    }
+
+    this.grid.highlightTile(symbol);
 
     try {
-      const response = await fetch(`${API_ROOT}api/stock/${symbol}`);
-      const data = await response.json();
-
-      if (this.detail) {
-        this.detail.update(data);
-      }
-
-      if (this.grid) {
-        this.grid.highlightTile(symbol);
-      }
-
-      // Announce for screen readers
-      this.announce(`Selected stock ${symbol}`);
-    } catch (error) {
-      console.error(`Failed to load stock ${symbol}:`, error);
-      this.showError(`Failed to load ${symbol} details`);
+      const payload = await this.api.stock(symbol);
+      this.detail?.update(payload);
+      this.announce(`Selected ${symbol}`);
+    } catch (err) {
+      this.toast(`Failed to load ${symbol}`);
     }
   }
 
   closeDetail() {
-    const panel = document.getElementById('stock-detail');
-    const backdrop = document.getElementById('detail-backdrop');
-    if (panel) {
-      panel.setAttribute('aria-hidden', 'true');
-      panel.removeAttribute('aria-modal');
-    }
-    if (backdrop) {
-      backdrop.classList.remove('visible');
-      setTimeout(() => { backdrop.style.display = 'none'; }, 300);
-    }
-    this.selectedStock = null;
-    if (this.grid) this.grid.highlightTile(null);
-    // Return focus to the tile that triggered the panel open
-    if (this._lastFocusedTile && this._lastFocusedTile.focus) {
-      this._lastFocusedTile.focus();
-      this._lastFocusedTile = null;
-    }
-  }
-
-  updateGrid(predictions) {
-    if (!this.grid) return;
-
-    // Transform predictions data for grid
-    // API returns predictions with: ticker, name, predicted_direction, confidence, accuracy, etc.
-    const gridData = predictions.map(pred => ({
-      symbol: pred.ticker,  // API returns 'ticker' not 'symbol'
-      name: pred.name,
-      price: pred.predicted_price || pred.initial_price,  // Use predicted or initial price
-      change: null,  // Change percent not in predictions, would need price history
-      prediction: pred.predicted_direction,  // 'up', 'down', 'neutral'
-      confidence: pred.confidence,
-      accuracy: pred.accuracy,
-      provider: pred.provider
-    }));
-
-    this.grid.update(gridData);
-  }
-
-  connectToStream() {
-    if (this.eventSource) {
-      this.eventSource.close();
+    const drawer = document.getElementById('stock-detail');
+    if (drawer) {
+      drawer.setAttribute('aria-hidden', 'true');
+      drawer.removeAttribute('aria-modal');
     }
 
-    this.eventSource = new EventSource(`${API_ROOT}api/stream`);
+    this.selectedSymbol = null;
+    this.grid.highlightTile(null);
 
-    this.eventSource.onopen = () => {
-      console.log('SSE connection established');
-      this.updateConnectionStatus('connected');
-    };
-
-    this.eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        this.handleStreamEvent(data);
-      } catch (error) {
-        console.error('Failed to parse SSE event:', error);
-      }
-    };
-
-    this.eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      this.updateConnectionStatus('reconnecting');
-
-      // Attempt reconnection after delay
-      setTimeout(() => {
-        if (this.eventSource.readyState === EventSource.CLOSED) {
-          console.log('Attempting to reconnect...');
-          this.connectToStream();
-        }
-      }, 5000);
-    };
-
-    // Backend emits plain `data:` events (no `event:` header),
-    // so all routing is handled by onmessage → handleStreamEvent()
-  }
-
-  handleStreamEvent(data) {
-    switch (data.type) {
-      case 'connected':
-        console.log('Connected to stream');
-        break;
-      case 'heartbeat':
-        // Keep-alive, no action needed
-        break;
-      // Map backend event types to frontend handlers
-      case 'prediction':
-      case 'prediction_made':  // Backend event type
-        if (window.setPhase) window.setPhase('analysis');
-        this.handlePrediction(data);
-        break;
-      case 'cycle_start':
-        this.handleCycleStart(data);
-        break;
-      case 'cycle_complete':
-      case 'cycle_end':  // Backend event type
-        this.handleCycleComplete(data);
-        break;
-      case 'stock_discovered':  // Backend event type
-        if (window.setPhase) window.setPhase('discovery');
-        // Add a placeholder tile for the newly discovered stock
-        if (data.data?.stock_id && this.grid) {
-          const ticker = data.data?.ticker || '';
-          if (ticker) this.grid.patchTile(ticker, { symbol: ticker });
-        }
-        break;
-      case 'analysis_start':
-        if (window.setPhase) window.setPhase('analysis');
-        break;
-      case 'debate_start':
-        if (window.setPhase) window.setPhase('debate');
-        break;
-      case 'consensus_start':
-        if (window.setPhase) window.setPhase('consensus');
-        break;
-      case 'price_update':  // Backend event type
-        // Patch the specific tile's price without a full reload
-        if (data.data?.stock_id && this.grid) {
-          const price = data.data?.price;
-          if (price) this.grid.patchTile(data.data?.ticker || '', { price });
-        }
-        break;
-      default:
-        console.log('Unknown event type:', data.type);
+    if (this.lastFocusedTile?.focus) {
+      this.lastFocusedTile.focus();
+      this.lastFocusedTile = null;
     }
-  }
-
-  handlePrediction(data) {
-    console.log('New prediction:', data);
-
-    // Patch the grid in-memory from the SSE payload — avoids a full fetch+re-render
-    // during active cycles where many predictions arrive in quick succession
-    const symbol = data.ticker || data.stock?.symbol || data.stock?.ticker || '';
-    const direction = data.predicted_direction || data.prediction || data.data?.direction || '';
-    const confidence = data.confidence || data.data?.confidence;
-    if (symbol && this.grid) {
-      this.grid.patchTile(symbol, { prediction: direction, confidence });
-    }
-
-    // Update ticker tape with latest prediction
-    if (symbol) {
-      const dirLabel = direction === 'up' ? '▲' : direction === 'down' ? '▼' : '—';
-      this.addTickerItem(`${symbol} ${dirLabel}`);
-    }
-  }
-
-  addTickerItem(text) {
-    const ticker = document.getElementById('ticker-content');
-    if (!ticker) return;
-
-    // Strip the placeholder if still present
-    if (ticker.dataset.init !== 'true') {
-      ticker.innerHTML = '';
-      ticker.dataset.init = 'true';
-    }
-
-    // Track items in an array so we can rebuild the doubled content (capped at 40)
-    if (!this._tickerItems) this._tickerItems = [];
-    this._tickerItems.push(`${text}   `);
-    if (this._tickerItems.length > 40) this._tickerItems.shift();
-
-    // The -50% translateX animation requires content doubled inside the container
-    // for a seamless infinite scroll loop (second half is the invisible reset point)
-    const half = this._tickerItems.join('');
-    ticker.textContent = half + half;
-  }
-
-  handleCycleStart(data) {
-    console.log('Cycle started:', data);
-    this.currentCycle = data.cycle;
-    this.showNotification('New prediction cycle started');
-    if (window.setPhase) window.setPhase('discovery');
-    this.setCycleButtonState(true);
-    this.loadCurrentCycle();
-  }
-
-  handleCycleComplete(data) {
-    console.log('Cycle completed:', data);
-    this.showNotification('Prediction cycle completed');
-    if (window.resetPhases) window.resetPhases();
-    this.setCycleButtonState(false);
-    this.loadCurrentCycle();
-    this.loadStats();
   }
 
   setCycleButtonState(running) {
     const startBtn = document.getElementById('start-cycle-btn');
-    const stopBtn  = document.getElementById('stop-cycle-btn');
-    if (startBtn) startBtn.disabled = running;
-    if (stopBtn)  stopBtn.disabled  = !running;
+    const stopBtn = document.getElementById('stop-cycle-btn');
+    if (startBtn) startBtn.disabled = !!running;
+    if (stopBtn) stopBtn.disabled = !running;
   }
 
-  updateConnectionStatus(status) {
-    const dot  = document.getElementById('status-indicator');
+  connectStream() {
+    if (this.eventSource) this.eventSource.close();
+
+    this.eventSource = new EventSource(`${API_ROOT}api/stream`);
+    this.eventSource.onopen = () => this.setConnectionStatus('connected');
+    this.eventSource.onerror = () => this.setConnectionStatus('reconnecting');
+    this.eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        this.handleStream(payload);
+      } catch (err) {
+        // Ignore malformed SSE events.
+      }
+    };
+  }
+
+  handleStream(payload) {
+    const type = payload?.type;
+
+    if (type === 'connected' || type === 'heartbeat') return;
+
+    if (type === 'cycle_start') {
+      this.currentCycle = payload.cycle || null;
+      this.renderCycleCard(this.currentCycle);
+      this.setCycleButtonState(true);
+      window.setPhase?.('discovery');
+      this.toast('New prediction cycle started');
+      return;
+    }
+
+    if (type === 'cycle_complete' || type === 'cycle_end') {
+      this.setCycleButtonState(false);
+      window.resetPhases?.();
+      this.toast('Prediction cycle completed');
+      this.reload();
+      return;
+    }
+
+    if (type === 'analysis_start') {
+      window.setPhase?.('analysis');
+      return;
+    }
+
+    if (type === 'debate_start') {
+      window.setPhase?.('debate');
+      return;
+    }
+
+    if (type === 'consensus_start') {
+      window.setPhase?.('consensus');
+      return;
+    }
+
+    if (type === 'stock_discovered') {
+      window.setPhase?.('discovery');
+      const ticker = payload?.data?.ticker;
+      if (ticker) this.grid.patchTile(ticker, { symbol: ticker });
+      return;
+    }
+
+    if (type === 'price_update') {
+      const ticker = payload?.data?.ticker;
+      const price = payload?.data?.price;
+      if (ticker && Number.isFinite(+price)) this.grid.patchTile(ticker, { price: +price });
+      return;
+    }
+
+    if (type === 'prediction' || type === 'prediction_made') {
+      window.setPhase?.('analysis');
+      const symbol = payload.ticker || payload.stock?.symbol || payload.stock?.ticker || '';
+      const direction = payload.predicted_direction || payload.prediction || payload.data?.direction || 'neutral';
+      const confidence = payload.confidence ?? payload.data?.confidence;
+      if (symbol) {
+        this.grid.patchTile(symbol, { prediction: direction, confidence });
+        const signal = direction === 'up' ? '▲' : direction === 'down' ? '▼' : '—';
+        this.pushTicker(`${symbol} ${signal}`);
+      }
+    }
+  }
+
+  setConnectionStatus(status) {
+    const indicator = document.getElementById('status-indicator');
     const text = document.getElementById('status-text');
-
-    if (dot) {
-      dot.className = 'status-indicator'; // reset all state classes
-      dot.classList.add(status); // 'connected' | 'disconnected' | 'reconnecting'
-    }
+    if (indicator) indicator.className = `status-indicator ${status}`;
     if (text) {
-      text.textContent = status === 'connected' ? 'Connected'
-        : status === 'reconnecting' ? 'Reconnecting...'
-        : 'Disconnected';
+      if (status === 'connected') text.textContent = 'Connected';
+      else if (status === 'reconnecting') text.textContent = 'Reconnecting...';
+      else text.textContent = 'Disconnected';
     }
   }
 
-  showNotification(message) {
-    // Create toast notification
-    const toast = document.createElement('div');
-    toast.className = 'toast-notification';
-    toast.textContent = message;
-    toast.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: var(--glass-bg);
-      border: 1px solid var(--glass-border);
-      border-radius: 4px;
-      padding: 10px 16px;
-      color: var(--text-primary);
-      font-family: var(--font-data);
-      font-size: 0.75rem;
-      letter-spacing: 0.05em;
-      backdrop-filter: blur(10px);
-      z-index: 2000;
-    `;
+  pushTicker(text) {
+    const el = document.getElementById('ticker-content');
+    if (!el) return;
 
-    document.body.appendChild(toast);
-
-    toast.classList.add('toast-notification');
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.25s ease-out';
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
-  }
-
-  showError(message) {
-    console.error(message);
-    // Show as a notification since there's no dedicated #status element
-    this.showNotification(`⚠ ${message}`);
-  }
-
-  showEmptyState() {
-    // Don't replace the D3 container; append a floating message inside it
-    const gridEl = document.querySelector('#stock-grid');
-    if (!gridEl) return;
-
-    const existing = gridEl.querySelector('.empty-state');
-    if (existing) return; // Already shown
-
-    const msg = document.createElement('div');
-    msg.className = 'empty-state';
-    msg.style.cssText = [
-      'position:absolute', 'inset:0', 'display:flex', 'flex-direction:column',
-      'align-items:center', 'justify-content:center', 'gap:1rem',
-      'pointer-events:none'
-    ].join(';');
-    msg.innerHTML = `
-      <div class="loading-spinner" style="width:36px;height:36px;border:2px solid var(--glass-border);border-top:2px solid var(--accent-primary);border-radius:50%;"></div>
-      <p style="margin:0;color:var(--text-primary);font-family:var(--font-display);letter-spacing:.08em;">Awaiting Oracle</p>
-      <p style="margin:0;color:var(--text-muted);font-family:var(--font-data);font-size:.75rem;">Run Cycle to begin</p>
-    `;
-    // Make container relative so absolute child positions correctly
-    gridEl.style.position = 'relative';
-    gridEl.appendChild(msg);
-  }
-
-  setupKeyboardNav() {
-    document.addEventListener('keydown', (e) => {
-      // Escape to close detail panel
-      if (e.key === 'Escape' && this.selectedStock) {
-        this.closeDetail();
-        if (this.detail) this.detail.showEmpty();
-      }
-
-      // R to refresh (not in inputs)
-      const tag = e.target.tagName;
-      if ((e.key === 'r' || e.key === 'R') && tag !== 'INPUT' && tag !== 'TEXTAREA' && !e.target.isContentEditable) {
-        this.loadCurrentCycle();
-        this.loadStats();
-        this.announce('Dashboard refreshed');
-      }
-    });
-
-    // Close button
-    const closeBtn = document.getElementById('close-detail');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        this.closeDetail();
-        if (this.detail) this.detail.showEmpty();
-      });
+    if (el.textContent.includes('Awaiting first cycle')) {
+      el.textContent = '';
     }
 
-    // Backdrop click to close
-    const backdrop = document.getElementById('detail-backdrop');
-    if (backdrop) {
-      backdrop.addEventListener('click', () => {
-        this.closeDetail();
-        if (this.detail) this.detail.showEmpty();
-      });
-    }
+    this.tickerItems.push(`${text}   `);
+    if (this.tickerItems.length > 40) this.tickerItems.shift();
+    const half = this.tickerItems.join('');
+    el.textContent = half + half;
+  }
 
-    // Ticker pause/resume toggle (WCAG 2.2.2)
-    const tickerPauseBtn = document.getElementById('ticker-pause-btn');
-    const tickerContent  = document.getElementById('ticker-content');
-    if (tickerPauseBtn && tickerContent) {
-      tickerPauseBtn.addEventListener('click', () => {
-        const paused = tickerPauseBtn.getAttribute('aria-pressed') === 'true';
-        if (paused) {
-          tickerContent.classList.remove('paused');
-          tickerPauseBtn.setAttribute('aria-pressed', 'false');
-          tickerPauseBtn.setAttribute('aria-label', 'Pause ticker');
-        } else {
-          tickerContent.classList.add('paused');
-          tickerPauseBtn.setAttribute('aria-pressed', 'true');
-          tickerPauseBtn.setAttribute('aria-label', 'Resume ticker');
-        }
-      });
-    }
+  showGridEmpty() {
+    const host = document.getElementById('grid-stage');
+    if (!host || host.querySelector('.empty-state')) return;
+
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:.84rem;pointer-events:none;';
+    empty.textContent = 'Awaiting cycle start...';
+    host.appendChild(empty);
+  }
+
+  hideGridEmpty() {
+    const node = document.querySelector('#grid-stage .empty-state');
+    if (node) node.remove();
+  }
+
+  toast(message) {
+    const node = document.createElement('div');
+    node.className = 'toast';
+    node.textContent = message;
+    document.body.appendChild(node);
+    setTimeout(() => node.remove(), 2400);
   }
 
   announce(message) {
-    // Screen reader announcement
-    const announcement = document.createElement('div');
-    announcement.setAttribute('role', 'status');
-    announcement.setAttribute('aria-live', 'polite');
-    announcement.className = 'sr-only';
-    announcement.textContent = message;
-    document.body.appendChild(announcement);
-
-    setTimeout(() => announcement.remove(), 1000);
+    const node = document.getElementById('sr-announcer');
+    if (!node) return;
+    node.textContent = '';
+    requestAnimationFrame(() => {
+      node.textContent = message;
+    });
   }
 
   destroy() {
-    if (this.eventSource) {
-      this.eventSource.close();
-    }
-    if (this.grid) {
-      this.grid.destroy();
-    }
-    if (this.detail) {
-      this.detail.destroy();
-    }
-    if (this.sidebar) {
-      this.sidebar.destroy();
-    }
+    if (this.eventSource) this.eventSource.close();
+    if (this.providerHealthTimer) clearInterval(this.providerHealthTimer);
+    this.grid?.destroy();
+    this.detail?.destroy();
+    this.sidebar?.destroy();
   }
 }
 
-// Initialize dashboard when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     window.foresightDashboard = new ForesightDashboard();
@@ -597,9 +474,6 @@ if (document.readyState === 'loading') {
   window.foresightDashboard = new ForesightDashboard();
 }
 
-// Cleanup on page unload
 window.addEventListener('beforeunload', () => {
-  if (window.foresightDashboard) {
-    window.foresightDashboard.destroy();
-  }
+  window.foresightDashboard?.destroy();
 });

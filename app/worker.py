@@ -6,6 +6,7 @@ import logging
 import threading
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from db import ForesightDB
 from .services.stock_service import StockService
@@ -31,6 +32,7 @@ class PredictionWorker:
         self.current_cycle_id: Optional[int] = None
         self.last_cycle_time: float = 0
         self.total_cycles_completed: int = 0
+        self.last_premarket_cycle_date = None
 
         # Initialize services
         self.stock_service = StockService()
@@ -79,6 +81,9 @@ class PredictionWorker:
 
         while self.running:
             try:
+                # Ensure there is at least one cycle before US market open on weekdays.
+                self._ensure_premarket_cycle()
+
                 # Run a prediction cycle
                 self._run_prediction_cycle()
 
@@ -96,6 +101,49 @@ class PredictionWorker:
                 logger.error(f'Worker error: {e}', exc_info=True)
                 # Wait a bit before retrying
                 time.sleep(60)
+
+    def _ensure_premarket_cycle(self):
+        """
+        Force at least one cycle during the pre-market window (04:00-09:30 ET),
+        once per weekday, so the DB has fresh pre-open data.
+        """
+        et_now = datetime.now(ZoneInfo('America/New_York'))
+        if et_now.weekday() >= 5:  # Sat/Sun
+            return
+
+        premarket_start = et_now.replace(hour=4, minute=0, second=0, microsecond=0)
+        market_open = et_now.replace(hour=9, minute=30, second=0, microsecond=0)
+        if not (premarket_start <= et_now < market_open):
+            return
+
+        today = et_now.date()
+        if self.last_premarket_cycle_date == today:
+            return
+
+        db = ForesightDB(self.db_path)
+        recent_cycles = db.get_recent_cycles(limit=50)
+
+        has_today_premarket_cycle = False
+        for cycle in recent_cycles:
+            start_raw = cycle.get('start_time')
+            if not start_raw:
+                continue
+            try:
+                # SQLite timestamps are naive strings; interpret as local server time.
+                start_dt = datetime.fromisoformat(str(start_raw))
+            except Exception:
+                continue
+            if start_dt.date() == today and start_dt.time() < market_open.time():
+                has_today_premarket_cycle = True
+                break
+
+        if has_today_premarket_cycle:
+            self.last_premarket_cycle_date = today
+            return
+
+        logger.info('No pre-market cycle found for today; triggering pre-open cycle')
+        self._run_prediction_cycle()
+        self.last_premarket_cycle_date = today
 
     def _run_prediction_cycle(self, cycle_id: Optional[int] = None):
         """
@@ -160,8 +208,9 @@ class PredictionWorker:
         """
         try:
             max_stocks = self.config['MAX_STOCKS']
-            logger.debug(f'Calling discover_stocks with max_stocks={max_stocks}')
-            symbols = self.prediction_service.discover_stocks(count=max_stocks)
+            logger.debug(f'Calling discover_stocks_debate with max_stocks={max_stocks}')
+            weights = self._get_provider_weights(db)
+            symbols = self.prediction_service.discover_stocks_debate(count=max_stocks, provider_weights=weights)
             logger.debug(f'Discovery returned: {symbols}')
 
             if not symbols:
@@ -213,6 +262,24 @@ class PredictionWorker:
             logger.error(f'Error discovering stocks: {e}', exc_info=True)
             return []
 
+    def _get_provider_weights(self, db: ForesightDB) -> Dict[str, float]:
+        """
+        Build provider weights using historical evaluated accuracy.
+        """
+        leaderboard = db.get_provider_leaderboard()
+        performance: Dict[str, float] = {}
+        for row in leaderboard:
+            provider = row.get('provider', '')
+            # Ignore synthetic consensus rows for base provider performance.
+            if provider.endswith('-consensus'):
+                continue
+            if row.get('accuracy_rate') is None:
+                continue
+            performance[provider] = float(row['accuracy_rate'])
+        weights = self.prediction_service.build_provider_weights(performance)
+        logger.info(f'Provider weights for cycle: {weights}')
+        return weights
+
     def _process_stock(self, db: ForesightDB, cycle_id: int, symbol: str):
         """
         Process a single stock: fetch data, get multiple analyst reports, and a consensus
@@ -243,83 +310,78 @@ class PredictionWorker:
                 'dates': historical['dates']
             }
 
-            # --- MULTI-AGENT DEBATE PHASE ---
+            # --- MULTI-AGENT COUNCIL PHASE ---
             analyst_reports = []
             current_price = stock_data.get('current_price')
             # Set target time to 7 days from now
             target_time = datetime.now() + timedelta(days=7)
-            
-            # 1. Claude (Primary Analyst)
-            logger.info(f'[{symbol}] Requesting analysis from Primary Analyst (Claude)')
-            primary_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='anthropic')
-            if primary_report:
-                analyst_reports.append(primary_report)
-                db.add_prediction(
-                    cycle_id=cycle_id,
-                    stock_id=stock_id,
-                    provider=primary_report['provider'],
-                    predicted_direction=primary_report['prediction'],
-                    confidence=primary_report['confidence'],
-                    initial_price=current_price,
-                    target_time=target_time,
-                    reasoning=primary_report['reasoning']
-                )
+            provider_groups = [
+                ('core', ['xai', 'gemini']),
+                ('join', ['anthropic', 'openai', 'perplexity']),
+                ('side', ['mistral', 'cohere']),
+            ]
 
-            # 2. Grok (Alternative Analyst)
-            logger.info(f'[{symbol}] Requesting analysis from Alternative Analyst (Grok)')
-            alternative_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='xai')
-            if alternative_report:
-                analyst_reports.append(alternative_report)
-                db.add_prediction(
-                    cycle_id=cycle_id,
-                    stock_id=stock_id,
-                    provider=alternative_report['provider'],
-                    predicted_direction=alternative_report['prediction'],
-                    confidence=alternative_report['confidence'],
-                    initial_price=current_price,
-                    target_time=target_time,
-                    reasoning=alternative_report['reasoning']
-                )
+            for stage_name, providers in provider_groups:
+                for provider_name in providers:
+                    logger.info(f'[{symbol}] [{stage_name}] Requesting analysis from {provider_name}')
+                    report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name=provider_name)
+                    if not report:
+                        continue
 
-            # 3. Mistral (European Perspective)
-            logger.info(f'[{symbol}] Requesting analysis from European Perspective (Mistral)')
-            mistral_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='mistral')
-            if mistral_report:
-                analyst_reports.append(mistral_report)
-                db.add_prediction(
-                    cycle_id=cycle_id,
-                    stock_id=stock_id,
-                    provider=mistral_report['provider'],
-                    predicted_direction=mistral_report['prediction'],
-                    confidence=mistral_report['confidence'],
-                    initial_price=current_price,
-                    target_time=target_time,
-                    reasoning=mistral_report['reasoning']
-                )
+                    report['stage'] = stage_name
+                    analyst_reports.append(report)
+                    db.add_prediction(
+                        cycle_id=cycle_id,
+                        stock_id=stock_id,
+                        provider=report['provider'],
+                        predicted_direction=report['prediction'],
+                        confidence=report['confidence'],
+                        initial_price=current_price,
+                        target_time=target_time,
+                        reasoning=f"[{stage_name}] {report['reasoning']}"
+                    )
 
-            # 4. Perplexity (Search-Augmented Perspective)
-            logger.info(f'[{symbol}] Requesting analysis from Search-Augmented Analyst (Perplexity)')
-            perplexity_report = self.prediction_service.generate_prediction(symbol, stock_data, provider_name='perplexity')
-            if perplexity_report:
-                analyst_reports.append(perplexity_report)
-                db.add_prediction(
-                    cycle_id=cycle_id,
-                    stock_id=stock_id,
-                    provider=perplexity_report['provider'],
-                    predicted_direction=perplexity_report['prediction'],
-                    confidence=perplexity_report['confidence'],
-                    initial_price=current_price,
-                    target_time=target_time,
-                    reasoning=perplexity_report['reasoning']
-                )
-
-            # --- CONSENSUS PHASE (Head of Research / Gemini) ---
+            # --- WEIGHTED COUNCIL VOTE + SYNTHESIS PHASE ---
             if analyst_reports:
-                logger.info(f'[{symbol}] Moderating debate between {len(analyst_reports)} analysts')
+                logger.info(f'[{symbol}] Moderating council debate between {len(analyst_reports)} analysts')
+
+                weights = self._get_provider_weights(db)
+                vote_totals = {'up': 0.0, 'down': 0.0, 'neutral': 0.0}
+                per_provider_lines = []
+
+                for report in analyst_reports:
+                    provider = report['provider']
+                    direction = report['prediction'] if report['prediction'] in vote_totals else 'neutral'
+                    conf = float(report.get('confidence') or 0.5)
+                    w = float(weights.get(provider, 1.0))
+                    score = max(0.05, conf) * w
+                    vote_totals[direction] += score
+                    per_provider_lines.append(
+                        f"{provider} [{report.get('stage','n/a')}]: dir={direction} conf={conf:.2f} weight={w:.2f} score={score:.2f}; reason={report.get('reasoning','')}"
+                    )
+
+                winning_direction = max(vote_totals.items(), key=lambda x: x[1])[0]
+                total_score = sum(vote_totals.values()) or 1.0
+                council_confidence = vote_totals[winning_direction] / total_score
+                council_reasoning = (
+                    f"Council weighted vote totals: up={vote_totals['up']:.2f}, down={vote_totals['down']:.2f}, neutral={vote_totals['neutral']:.2f}. "
+                    f"Winner={winning_direction}. Individual reports: " + " | ".join(per_provider_lines)
+                )
+
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider='council-weighted',
+                    predicted_direction=winning_direction,
+                    confidence=council_confidence,
+                    initial_price=current_price,
+                    target_time=target_time,
+                    reasoning=council_reasoning
+                )
+
+                # Optional head-of-research synthesis
                 consensus = self.prediction_service.debate_and_vote(symbol, stock_data, analyst_reports)
-                
                 if consensus:
-                    # Mark this as the final consensus prediction
                     db.add_prediction(
                         cycle_id=cycle_id,
                         stock_id=stock_id,
@@ -328,9 +390,16 @@ class PredictionWorker:
                         confidence=consensus['confidence'],
                         initial_price=current_price,
                         target_time=target_time,
-                        reasoning=consensus['reasoning']
+                        reasoning=(
+                            f"{consensus['reasoning']} | Council vote: {winning_direction} ({council_confidence:.2f}). "
+                            f"Vote totals: {vote_totals}. Individual reports: {' | '.join(per_provider_lines)}"
+                        )
                     )
-                    logger.info(f'Consensus reached for {symbol}: {consensus["prediction"]} (confidence: {consensus["confidence"]}) via {consensus["model"]}')
+                    logger.info(
+                        f'Consensus reached for {symbol}: {consensus["prediction"]} '
+                        f'(confidence: {consensus["confidence"]}) via {consensus["model"]}; '
+                        f'council winner={winning_direction} ({council_confidence:.2f})'
+                    )
             else:
                 logger.warning(f'No analyst reports available for {symbol}, skipping consensus')
 

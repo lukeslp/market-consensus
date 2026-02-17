@@ -1,538 +1,219 @@
-/**
- * Stock Detail Visualization
- * D3.js v7 - Individual stock view with prediction timeline and accuracy chart
- */
-
 class StockDetail {
-  constructor(container, options = {}) {
-    this.container = d3.select(container);
+  constructor(containerSelector, options = {}) {
+    this.container = d3.select(containerSelector);
     this.options = {
-      width: options.width || 800,
+      width: options.width || 840,
       height: options.height || 400,
-      margin: { top: 40, right: 60, bottom: 60, left: 60 },
+      margin: { top: 26, right: 28, bottom: 40, left: 60 },
       ...options
     };
 
-    this.colors = {
-      up: getComputedStyle(document.documentElement).getPropertyValue('--stock-up').trim(),
-      down: getComputedStyle(document.documentElement).getPropertyValue('--stock-down').trim(),
-      flat: getComputedStyle(document.documentElement).getPropertyValue('--stock-flat').trim(),
-      background: getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary').trim(),
-      text: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(),
-      textMuted: getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim(),
-      glassBorder: 'rgba(255, 255, 255, 0.1)'
-    };
-
+    this.colors = this.readColors();
     this.svg = null;
     this.chart = null;
-    this.scales = {};
-    this.currentStock = null;
+    this.tooltip = null;
+    this.current = null;
+    this.scales = { x: null, y: null };
+
     this.init();
+  }
+
+  readColors() {
+    const css = getComputedStyle(document.documentElement);
+    return {
+      ink: css.getPropertyValue('--ink').trim(),
+      muted: css.getPropertyValue('--muted').trim(),
+      line: css.getPropertyValue('--line').trim(),
+      up: css.getPropertyValue('--up').trim(),
+      down: css.getPropertyValue('--down').trim(),
+      flat: css.getPropertyValue('--flat').trim()
+    };
   }
 
   init() {
     const { width, height, margin } = this.options;
-    const chartWidth = width - margin.left - margin.right;
-    const chartHeight = height - margin.top - margin.bottom;
+    const innerW = width - margin.left - margin.right;
+    const innerH = height - margin.top - margin.bottom;
 
-    this.svg = this.container
-      .append('svg')
+    this.svg = this.container.append('svg')
       .attr('viewBox', `0 0 ${width} ${height}`)
       .attr('preserveAspectRatio', 'xMidYMid meet')
       .attr('role', 'img')
-      .attr('aria-label', 'Stock prediction timeline chart')
       .attr('tabindex', 0)
-      .attr('aria-describedby', 'detail-chart-tooltip')
-      .classed('stock-detail', true);
+      .attr('aria-label', 'Stock price chart and prediction markers');
 
-    // Chart group
-    this.chart = this.svg
-      .append('g')
-      .attr('transform', `translate(${margin.left}, ${margin.top})`);
+    this.chart = this.svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Clip path for animations
-    this.svg
-      .append('defs')
-      .append('clipPath')
-      .attr('id', 'chart-clip')
-      .append('rect')
-      .attr('width', chartWidth)
-      .attr('height', chartHeight);
+    this.chart.append('g').attr('class', 'grid-x').attr('transform', `translate(0,${innerH})`);
+    this.chart.append('g').attr('class', 'grid-y');
+    this.chart.append('path').attr('class', 'line-path');
+    this.chart.append('g').attr('class', 'prediction-markers');
+    this.chart.append('line').attr('class', 'focus-line').attr('stroke-dasharray', '4 4').attr('opacity', 0);
+    this.chart.append('circle').attr('class', 'focus-dot').attr('r', 4).attr('opacity', 0);
 
-    // Grid lines container
-    this.chart.append('g').attr('class', 'grid grid-y');
-    this.chart.append('g').attr('class', 'grid grid-x');
-
-    // Data containers
-    this.chart.append('g').attr('class', 'price-area').attr('clip-path', 'url(#chart-clip)');
-    this.chart.append('g').attr('class', 'price-line').attr('clip-path', 'url(#chart-clip)');
-    this.chart.append('g').attr('class', 'predictions').attr('clip-path', 'url(#chart-clip)');
-    this.chart.append('g').attr('class', 'confidence-bands').attr('clip-path', 'url(#chart-clip)');
-
-    // Axes
-    this.chart.append('g').attr('class', 'axis axis-x');
-    this.chart.append('g').attr('class', 'axis axis-y');
-
-    // Tooltip — role="tooltip" with stable id for aria-describedby linkage
-    this.tooltip = this.container
-      .append('div')
-      .attr('class', 'detail-tooltip')
-      .attr('id', 'detail-chart-tooltip')
-      .attr('role', 'tooltip')
+    this.tooltip = this.container.append('div')
       .style('position', 'absolute')
-      .style('opacity', 0)
-      .style('background', 'rgba(15, 23, 42, 0.95)')
-      .style('border', '1px solid rgba(255, 255, 255, 0.2)')
-      .style('border-radius', '8px')
-      .style('padding', '12px')
       .style('pointer-events', 'none')
-      .style('font-size', '13px')
-      .style('color', this.colors.text)
-      .style('backdrop-filter', 'blur(10px)');
+      .style('opacity', 0)
+      .style('padding', '0.5rem 0.65rem')
+      .style('border', `1px solid ${this.colors.line}`)
+      .style('background', 'rgba(8, 14, 19, 0.95)')
+      .style('border-radius', '8px')
+      .style('font-size', '12px');
   }
 
-  update(stockData) {
-    // API returns price_history (not history)
-    const history = stockData && (stockData.price_history || stockData.history);
-    if (!history || history.length === 0) {
+  update(payload) {
+    const historyRaw = payload?.price_history || payload?.history || [];
+    if (!historyRaw.length) {
       this.showEmpty();
       return;
     }
 
-    this.currentStock = stockData;
+    const history = historyRaw
+      .map((d) => ({ date: new Date(d.timestamp || d.date), price: +d.price }))
+      .filter((d) => Number.isFinite(d.date.getTime()) && Number.isFinite(d.price));
+
+    if (!history.length) {
+      this.showEmpty();
+      return;
+    }
+
+    const predictions = (payload.predictions || []).map((p) => ({
+      date: new Date(p.prediction_time || p.date),
+      direction: p.predicted_direction || p.prediction || 'neutral',
+      confidence: +p.confidence || 0,
+      provider: p.provider || '',
+      price: Number.isFinite(+p.initial_price) ? +p.initial_price : null
+    }));
+
+    this.current = { symbol: payload.symbol || '', history, predictions };
+
     const { width, height, margin } = this.options;
-    const chartWidth = width - margin.left - margin.right;
-    const chartHeight = height - margin.top - margin.bottom;
+    const innerW = width - margin.left - margin.right;
+    const innerH = height - margin.top - margin.bottom;
 
-    // Parse timestamps — price records use `timestamp`, not `date`
-    history.forEach(d => {
-      d.date = new Date(d.timestamp || d.date);
-      d.price = +d.price;
-    });
+    this.scales.x = d3.scaleTime().domain(d3.extent(history, (d) => d.date)).range([0, innerW]).nice();
+    const [minPrice, maxPrice] = d3.extent(history, (d) => d.price);
+    const pad = (maxPrice - minPrice || 1) * 0.14;
+    this.scales.y = d3.scaleLinear().domain([minPrice - pad, maxPrice + pad]).range([innerH, 0]).nice();
 
-    if (stockData.predictions) {
-      stockData.predictions.forEach(d => {
-        // Prediction records use `prediction_time`, not `date`
-        d.date = new Date(d.prediction_time || d.date);
-        d.confidence = +d.confidence;
-      });
-    }
+    this.chart.select('.grid-x')
+      .call(d3.axisBottom(this.scales.x).ticks(6).tickFormat(d3.timeFormat('%b %d')))
+      .selectAll('text').attr('fill', this.colors.muted).style('font-size', '11px');
 
-    // Scales
-    const xExtent = d3.extent(history, d => d.date);
-    this.scales.x = d3.scaleTime()
-      .domain(xExtent)
-      .range([0, chartWidth])
-      .nice();
-
-    const priceExtent = d3.extent(history, d => d.price);
-    const padding = (priceExtent[1] - priceExtent[0]) * 0.1;
-    this.scales.y = d3.scaleLinear()
-      .domain([priceExtent[0] - padding, priceExtent[1] + padding])
-      .range([chartHeight, 0])
-      .nice();
-
-    // Update axes
-    const xAxis = d3.axisBottom(this.scales.x)
-      .ticks(6)
-      .tickFormat(d3.timeFormat('%b %d'));
-
-    const yAxis = d3.axisLeft(this.scales.y)
-      .ticks(5)
-      .tickFormat(d => `$${d.toFixed(2)}`);
-
-    this.chart.select('.axis-x')
-      .attr('transform', `translate(0, ${chartHeight})`)
-      .transition()
-      .duration(750)
-      .call(xAxis)
-      .selectAll('text')
-      .attr('fill', this.colors.textMuted)
-      .style('font-size', '12px');
-
-    this.chart.select('.axis-y')
-      .transition()
-      .duration(750)
-      .call(yAxis)
-      .selectAll('text')
-      .attr('fill', this.colors.textMuted)
-      .style('font-size', '12px');
-
-    // Style axis lines
-    this.chart.selectAll('.axis path, .axis line')
-      .attr('stroke', this.colors.glassBorder)
-      .attr('stroke-width', 1);
-
-    // Grid lines
     this.chart.select('.grid-y')
-      .transition()
-      .duration(750)
-      .call(d3.axisLeft(this.scales.y)
-        .ticks(5)
-        .tickSize(-chartWidth)
-        .tickFormat('')
-      )
-      .selectAll('line')
-      .attr('stroke', this.colors.glassBorder)
-      .attr('stroke-opacity', 0.3)
-      .attr('stroke-dasharray', '2,4');
+      .call(d3.axisLeft(this.scales.y).ticks(5).tickFormat((n) => `$${n.toFixed(2)}`))
+      .selectAll('text').attr('fill', this.colors.muted).style('font-size', '11px');
 
-    // Price area
-    const area = d3.area()
-      .x(d => this.scales.x(d.date))
-      .y0(chartHeight)
-      .y1(d => this.scales.y(d.price))
-      .curve(d3.curveMonotoneX);
+    this.chart.selectAll('.grid-x path, .grid-x line, .grid-y path, .grid-y line').attr('stroke', this.colors.line);
 
-    const areaPath = this.chart.select('.price-area')
-      .selectAll('path')
-      .data([history]);
-
-    areaPath.enter()
-      .append('path')
-      .attr('fill', `url(#price-gradient)`)
-      .attr('opacity', 0.2)
-      .merge(areaPath)
-      .transition()
-      .duration(750)
-      .attr('d', area);
-
-    // Gradient
-    if (!this.svg.select('#price-gradient').size()) {
-      const gradient = this.svg.select('defs')
-        .append('linearGradient')
-        .attr('id', 'price-gradient')
-        .attr('x1', '0%')
-        .attr('y1', '0%')
-        .attr('x2', '0%')
-        .attr('y2', '100%');
-
-      gradient.append('stop')
-        .attr('offset', '0%')
-        .attr('stop-color', this.colors.up)
-        .attr('stop-opacity', 0.4);
-
-      gradient.append('stop')
-        .attr('offset', '100%')
-        .attr('stop-color', this.colors.up)
-        .attr('stop-opacity', 0);
-    }
-
-    // Price line
-    const line = d3.line()
-      .x(d => this.scales.x(d.date))
-      .y(d => this.scales.y(d.price))
-      .curve(d3.curveMonotoneX);
-
-    const linePath = this.chart.select('.price-line')
-      .selectAll('path')
-      .data([history]);
-
-    linePath.enter()
-      .append('path')
+    const line = d3.line().x((d) => this.scales.x(d.date)).y((d) => this.scales.y(d.price)).curve(d3.curveMonotoneX);
+    this.chart.select('.line-path')
+      .datum(history)
       .attr('fill', 'none')
       .attr('stroke', this.colors.up)
       .attr('stroke-width', 2)
-      .merge(linePath)
-      .transition()
-      .duration(750)
+      .transition().duration(420)
       .attr('d', line);
 
-    // Predictions
-    if (stockData.predictions && stockData.predictions.length > 0) {
-      this.drawPredictions(stockData.predictions, chartWidth, chartHeight);
-    }
+    const marks = this.chart.select('.prediction-markers').selectAll('g.marker').data(predictions, (d) => `${d.provider}-${+d.date}`);
+    const marksEnter = marks.enter().append('g').attr('class', 'marker').style('opacity', 0);
+    marksEnter.append('circle').attr('class', 'marker-hit').attr('r', 18).attr('fill', 'transparent');
+    marksEnter.append('circle').attr('class', 'marker-dot').attr('r', 5);
 
-    // Interactive overlay
-    this.addInteractivity(history, chartWidth, chartHeight);
-  }
-
-  drawPredictions(predictions, chartWidth, chartHeight) {
-    // Confidence bands
-    const bands = this.chart.select('.confidence-bands')
-      .selectAll('.confidence-band')
-      .data(predictions);
-
-    const bandEnter = bands.enter()
-      .append('g')
-      .attr('class', 'confidence-band')
-      .style('opacity', 0);
-
-    // Background band
-    bandEnter.append('rect')
-      .attr('class', 'band-bg')
-      .attr('fill', d => {
-        if (d.predicted_direction === 'up') return this.colors.up;
-        if (d.predicted_direction === 'down') return this.colors.down;
-        return this.colors.flat;
-      })
-      .attr('opacity', d => this.getConfidenceOpacity(d.confidence));
-
-    // Merge and update
-    const bandMerge = bandEnter.merge(bands);
-
-    bandMerge.select('.band-bg')
-      .transition()
-      .duration(750)
-      .attr('x', d => this.scales.x(d.date) - 2)
-      .attr('y', 0)
-      .attr('width', 4)
-      .attr('height', chartHeight);
-
-    bandMerge
-      .transition()
-      .duration(750)
-      .style('opacity', 1);
-
-    bands.exit()
-      .transition()
-      .duration(500)
-      .style('opacity', 0)
-      .remove();
-
-    // Prediction markers
-    const markers = this.chart.select('.predictions')
-      .selectAll('.prediction-marker')
-      .data(predictions);
-
-    const markerEnter = markers.enter()
-      .append('g')
-      .attr('class', 'prediction-marker')
-      .style('opacity', 0);
-
-    // Invisible hit area for touch (44x44px minimum for iOS)
-    markerEnter.append('circle')
-      .attr('class', 'hit-area')
-      .attr('r', 22)  // 44px diameter (iOS minimum)
-      .attr('fill', 'transparent')
-      .attr('stroke', 'none')
-      .attr('pointer-events', 'all');
-
-    // Visual marker circle (smaller, sits on top visually)
-    markerEnter.append('circle')
-      .attr('class', 'visual-marker')
-      .attr('r', 6)
-      .attr('fill', d => {
-        if (d.predicted_direction === 'up') return this.colors.up;
-        if (d.predicted_direction === 'down') return this.colors.down;
-        return this.colors.flat;
-      })
-      .attr('stroke', '#0f172a')
-      .attr('stroke-width', 2)
-      .attr('pointer-events', 'none'); // Hit area handles all interaction
-
-    // Prediction arrow (unchanged)
-    markerEnter.append('path')
-      .attr('fill', '#0f172a')
-      .attr('d', d => {
-        if (d.predicted_direction === 'up') return 'M 0,-2.5 L -2,0.5 L 2,0.5 Z';
-        if (d.predicted_direction === 'down') return 'M 0,2.5 L -2,-0.5 L 2,-0.5 Z';
-        return '';
-      })
-      .attr('pointer-events', 'none'); // Hit area handles all interaction
-
-    // Merge and update
-    const markerMerge = markerEnter.merge(markers);
-
-    markerMerge
-      .attr('transform', d => {
-        const x = this.scales.x(d.date);
-        const y = this.scales.y(d.price || 0);
-        return `translate(${x}, ${y})`;
-      })
-      .style('cursor', 'pointer')
-      .on('mouseenter', (event, d) => this.showPredictionTooltip(event, d))
+    const marksMerged = marksEnter.merge(marks)
+      .attr('transform', (d) => `translate(${this.scales.x(d.date)},${this.scales.y(d.price ?? history.at(-1).price)})`)
+      .on('mouseenter', (event, d) => this.showPredictionTip(event, d))
       .on('mouseleave', () => this.hideTooltip());
 
-    markerMerge
-      .transition()
-      .duration(750)
-      .delay((d, i) => i * 50)
-      .style('opacity', 1);
+    marksMerged.select('.marker-dot')
+      .attr('fill', (d) => this.predictionColor(d.direction))
+      .attr('stroke', '#081017')
+      .attr('stroke-width', 1.6)
+      .attr('opacity', (d) => Math.max(0.35, d.confidence));
 
-    markers.exit()
-      .transition()
-      .duration(500)
-      .style('opacity', 0)
-      .remove();
+    marksEnter.transition().duration(300).style('opacity', 1);
+    marks.exit().remove();
+
+    this.installHover(history, innerW, innerH);
   }
 
-  addInteractivity(history, chartWidth, chartHeight) {
-    // Remove old overlay
-    this.chart.selectAll('.overlay').remove();
+  installHover(history, innerW, innerH) {
+    this.chart.selectAll('rect.hover-layer').remove();
 
-    // Invisible overlay for mouse tracking
     this.chart.append('rect')
-      .attr('class', 'overlay')
-      .attr('width', chartWidth)
-      .attr('height', chartHeight)
-      .attr('fill', 'none')
-      .attr('pointer-events', 'all')
-      .on('mousemove', (event) => this.handleMouseMove(event, history))
+      .attr('class', 'hover-layer')
+      .attr('width', innerW)
+      .attr('height', innerH)
+      .attr('fill', 'transparent')
+      .on('mousemove', (event) => {
+        const [x] = d3.pointer(event);
+        const date = this.scales.x.invert(x);
+        const bisect = d3.bisector((d) => d.date).left;
+        const idx = bisect(history, date, 1);
+        const left = history[idx - 1];
+        const right = history[idx];
+        const point = !right ? left : date - left.date > right.date - date ? right : left;
+
+        const px = this.scales.x(point.date);
+        const py = this.scales.y(point.price);
+
+        this.chart.select('.focus-line')
+          .attr('x1', px).attr('x2', px)
+          .attr('y1', 0).attr('y2', innerH)
+          .attr('stroke', this.colors.muted)
+          .attr('opacity', 0.6);
+
+        this.chart.select('.focus-dot')
+          .attr('cx', px).attr('cy', py)
+          .attr('fill', this.colors.up)
+          .attr('stroke', '#fff')
+          .attr('stroke-width', 1.5)
+          .attr('opacity', 1);
+
+        this.showPriceTip(event, point);
+      })
       .on('mouseleave', () => this.hideTooltip());
-
-    // Focus line
-    this.chart.append('line')
-      .attr('class', 'focus-line')
-      .attr('stroke', this.colors.textMuted)
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,4')
-      .attr('opacity', 0)
-      .attr('y1', 0)
-      .attr('y2', chartHeight);
-
-    // Focus circle
-    this.chart.append('circle')
-      .attr('class', 'focus-circle')
-      .attr('r', 4)
-      .attr('fill', this.colors.up)
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 2)
-      .attr('opacity', 0);
-
-    // Keyboard navigation through data points — ArrowLeft/ArrowRight step through history
-    // This provides a keyboard-accessible equivalent to the mouse tooltip (MED-04)
-    this._keyboardIndex = null;
-    const svgNode = this.svg.node();
-
-    svgNode.addEventListener('keydown', (event) => {
-      if (!history || history.length === 0) return;
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      event.preventDefault();
-
-      if (this._keyboardIndex === null) {
-        this._keyboardIndex = event.key === 'ArrowRight' ? 0 : history.length - 1;
-      } else if (event.key === 'ArrowRight') {
-        this._keyboardIndex = Math.min(this._keyboardIndex + 1, history.length - 1);
-      } else {
-        this._keyboardIndex = Math.max(this._keyboardIndex - 1, 0);
-      }
-
-      const d = history[this._keyboardIndex];
-      const x = this.scales.x(d.date);
-      const y = this.scales.y(d.price);
-
-      this.chart.select('.focus-line')
-        .attr('x1', x).attr('x2', x).attr('opacity', 0.5);
-      this.chart.select('.focus-circle')
-        .attr('cx', x).attr('cy', y).attr('opacity', 1);
-
-      // Position tooltip near the focus circle within the SVG bounding box
-      const svgRect = svgNode.getBoundingClientRect();
-      const { margin } = this.options;
-      const absX = svgRect.left + margin.left + x;
-      const absY = svgRect.top  + margin.top  + y;
-      this.showPriceTooltip({ pageX: absX, pageY: absY }, d);
-    });
-
-    svgNode.addEventListener('blur', () => {
-      this._keyboardIndex = null;
-      this.hideTooltip();
-    });
   }
 
-  handleMouseMove(event, history) {
-    const [mouseX] = d3.pointer(event);
-    const x0 = this.scales.x.invert(mouseX);
-    const bisect = d3.bisector(d => d.date).left;
-    const i = bisect(history, x0, 1);
-    const d0 = history[i - 1];
-    const d1 = history[i];
-    if (!d0 || !d1) return;
-
-    const d = x0 - d0.date > d1.date - x0 ? d1 : d0;
-
-    // Update focus elements
-    const x = this.scales.x(d.date);
-    const y = this.scales.y(d.price);
-
-    this.chart.select('.focus-line')
-      .attr('x1', x)
-      .attr('x2', x)
-      .attr('opacity', 0.5);
-
-    this.chart.select('.focus-circle')
-      .attr('cx', x)
-      .attr('cy', y)
-      .attr('opacity', 1);
-
-    // Show tooltip
-    this.showPriceTooltip(event, d);
+  predictionColor(direction) {
+    if (direction === 'up') return this.colors.up;
+    if (direction === 'down') return this.colors.down;
+    return this.colors.flat;
   }
 
-  showPriceTooltip(event, d) {
-    const formatDate = d3.timeFormat('%B %d, %Y');
-    const html = `
-      <div style="font-weight: 600; margin-bottom: 4px;">${this.currentStock.symbol}</div>
-      <div style="color: ${this.colors.textMuted}; font-size: 11px; margin-bottom: 8px;">${formatDate(d.date)}</div>
-      <div style="font-size: 16px; color: ${this.colors.up};">$${d.price.toFixed(2)}</div>
-    `;
-
-    this.tooltip
-      .html(html)
-      .style('opacity', 1)
-      .style('left', `${event.pageX + 10}px`)
-      .style('top', `${event.pageY - 10}px`);
+  showPriceTip(event, point) {
+    if (!this.current) return;
+    const html = `<strong>${this.current.symbol}</strong><br>${d3.timeFormat('%b %d, %Y')(point.date)}<br>$${point.price.toFixed(2)}`;
+    this.tooltip.html(html)
+      .style('left', `${event.pageX + 12}px`)
+      .style('top', `${event.pageY - 12}px`)
+      .style('opacity', 1);
   }
 
-  showPredictionTooltip(event, d) {
-    const formatDate = d3.timeFormat('%B %d, %Y');
-    const predictionColor = d.predicted_direction === 'up' ? this.colors.up :
-                           d.predicted_direction === 'down' ? this.colors.down :
-                           this.colors.flat;
-
-    const html = `
-      <div style="font-weight: 600; margin-bottom: 4px;">Prediction</div>
-      <div style="color: ${this.colors.textMuted}; font-size: 11px; margin-bottom: 8px;">${formatDate(d.date)}</div>
-      <div style="color: ${predictionColor}; text-transform: uppercase; font-weight: 600;">${d.predicted_direction}</div>
-      <div style="margin-top: 6px; font-size: 11px;">
-        Confidence: <span style="color: ${this.colors.text};">${(d.confidence * 100).toFixed(0)}%</span>
-      </div>
-      ${d.provider ? `<div style="font-size: 11px; color: ${this.colors.textMuted}; margin-top: 4px;">${d.provider}</div>` : ''}
-    `;
-
-    this.tooltip
-      .html(html)
-      .style('opacity', 1)
-      .style('left', `${event.pageX + 10}px`)
-      .style('top', `${event.pageY - 10}px`);
+  showPredictionTip(event, prediction) {
+    const html = `<strong>${prediction.provider || 'Model'}</strong><br>${prediction.direction.toUpperCase()} · ${(prediction.confidence * 100).toFixed(0)}%`;
+    this.tooltip.html(html)
+      .style('left', `${event.pageX + 12}px`)
+      .style('top', `${event.pageY - 12}px`)
+      .style('opacity', 1);
   }
 
   hideTooltip() {
     this.tooltip.style('opacity', 0);
     this.chart.select('.focus-line').attr('opacity', 0);
-    this.chart.select('.focus-circle').attr('opacity', 0);
-  }
-
-  getConfidenceOpacity(confidence) {
-    if (confidence >= 0.9) return 1.0;    // 90-100% - fully opaque
-    if (confidence >= 0.7) return 0.75;   // 70-89% - strong
-    if (confidence >= 0.5) return 0.6;    // 50-69% - moderate (improved visibility)
-    return 0.4;                           // <50% - uncertain (improved visibility)
+    this.chart.select('.focus-dot').attr('opacity', 0);
   }
 
   showEmpty() {
-    this.chart.selectAll('*').remove();
-    this.chart.append('text')
-      .attr('x', this.options.width / 2 - this.options.margin.left)
-      .attr('y', this.options.height / 2 - this.options.margin.top)
-      .attr('text-anchor', 'middle')
-      .attr('fill', this.colors.textMuted)
-      .attr('font-size', 14)
-      .text('Select a stock to view details');
+    this.container.selectAll('*').remove();
+    this.container.append('p').style('margin', '0').style('color', this.colors.muted).text('Select a stock tile to inspect chart details.');
   }
 
   destroy() {
-    if (this.svg) {
-      this.svg.remove();
-    }
-    if (this.tooltip) {
-      this.tooltip.remove();
-    }
+    if (this.svg) this.svg.remove();
+    if (this.tooltip) this.tooltip.remove();
   }
 }
 
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = StockDetail;
-}
+window.StockDetail = StockDetail;

@@ -120,31 +120,43 @@ def stock_detail(symbol):
 @api_bp.route('/health/providers')
 def health_providers():
     """Check health of LLM providers"""
-    from app.services.prediction_service import PredictionService
-
-    service = PredictionService(current_app.config)
+    worker = getattr(current_app, 'worker', None)
+    service = getattr(worker, 'prediction_service', None)
+    if service is None:
+        from app.services.prediction_service import PredictionService
+        service = PredictionService(current_app.config)
+    runtime_status = service.get_provider_runtime_status()
 
     providers_status = {}
     for role, provider_name in current_app.config['PROVIDERS'].items():
+        runtime = runtime_status.get(provider_name, {})
         if role in service.providers:
             provider = service.providers[role]
             providers_status[role] = {
-                'status': 'configured',
+                'status': 'configured' if runtime.get('healthy', True) else 'error',
                 'provider': provider_name,
-                'type': type(provider).__name__
+                'type': type(provider).__name__,
+                'last_error': runtime.get('last_error'),
+                'last_failed_at': runtime.get('last_failed_at')
             }
         else:
             providers_status[role] = {
                 'status': 'error',
                 'provider': provider_name,
-                'error': 'Failed to initialize'
+                'error': 'Failed to initialize',
+                'last_error': runtime.get('last_error'),
+                'last_failed_at': runtime.get('last_failed_at')
             }
 
-    all_healthy = all(p.get('status') == 'configured' for p in providers_status.values())
+    configured_healthy = all(p.get('status') == 'configured' for p in providers_status.values())
+    runtime_healthy = all(v.get('healthy', True) for v in runtime_status.values())
+    all_healthy = configured_healthy and runtime_healthy
 
     return jsonify({
         'healthy': all_healthy,
-        'providers': providers_status
+        'providers': providers_status,
+        # Runtime health for every provider touched by the service
+        'runtime': runtime_status
     })
 
 
@@ -191,7 +203,8 @@ def stream():
                         event_data = {
                             'id': event['id'],
                             'type': event['event_type'],
-                            'data': json.loads(event['data']) if event['data'] else {},
+                            # db.get_unprocessed_events() already deserializes event['data']
+                            'data': event.get('data') or {},
                             'timestamp': event['timestamp']
                         }
 
@@ -228,9 +241,9 @@ def stream():
         generate(),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-transform',
             'X-Accel-Buffering': 'no',  # Disable nginx buffering
-            'Connection': 'keep-alive'
+            # Do not set Connection header for HTTP/2 compatibility
         }
     )
 
@@ -266,13 +279,7 @@ def start_cycle():
             'cycle_id': current_cycle['id']
         }), 409
 
-    # Check if worker is running
     worker = current_app.worker
-    if not worker.is_alive() and not current_app.config.get('TESTING'):
-        return jsonify({
-            'error': 'Background worker is not running',
-            'message': 'Restart the application to start the worker'
-        }), 503
 
     # Create new cycle
     cycle_id = db.create_cycle()
@@ -283,6 +290,8 @@ def start_cycle():
     def trigger_cycle():
         with app.app_context():
             try:
+                # Manual runs should work even if this request hits a Gunicorn
+                # process that does not host the scheduler thread.
                 worker._run_prediction_cycle(cycle_id=cycle_id)
                 app.logger.info(f'Manual cycle {cycle_id} triggered via /api/cycle/start')
             except Exception as e:

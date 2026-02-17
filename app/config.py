@@ -30,15 +30,19 @@ class Config:
         'synthesis': os.environ.get('SYNTHESIS_PROVIDER', 'gemini')    # Gemini for debate/consensus
     }
 
-    # Model overrides (optional, leave empty for provider defaults)
+    # Model overrides (optional). By default we use provider defaults because model IDs change often.
+    # Set env vars like MODEL_OVERRIDE_ANTHROPIC, MODEL_OVERRIDE_XAI, etc. to pin specific models.
     MODEL_OVERRIDES = {
-        'xai': 'grok-2-1212',
-        'anthropic': 'claude-3-5-sonnet-20241022',
-        'gemini': 'gemini-2.0-flash',
-        'cohere': 'command-r-plus',
-        'mistral': 'mistral-large-latest',
-        'perplexity': 'sonar',
-        'manus': 'manus-1.5'
+        provider: model for provider, model in {
+            'xai': os.environ.get('MODEL_OVERRIDE_XAI'),
+            'anthropic': os.environ.get('MODEL_OVERRIDE_ANTHROPIC'),
+            'gemini': os.environ.get('MODEL_OVERRIDE_GEMINI'),
+            'cohere': os.environ.get('MODEL_OVERRIDE_COHERE'),
+            'mistral': os.environ.get('MODEL_OVERRIDE_MISTRAL'),
+            'perplexity': os.environ.get('MODEL_OVERRIDE_PERPLEXITY'),
+            'openai': os.environ.get('MODEL_OVERRIDE_OPENAI'),
+            'manus': os.environ.get('MODEL_OVERRIDE_MANUS'),
+        }.items() if model
     }
 
     # API Keys (loaded from environment)

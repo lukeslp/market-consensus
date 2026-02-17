@@ -1,412 +1,176 @@
-/**
- * Stock Grid Visualization
- * D3.js v7 - 50 stock tiles with enter/update/exit pattern
- */
-
 class StockGrid {
-  constructor(container, options = {}) {
-    this.container = d3.select(container);
+  constructor(containerSelector, options = {}) {
+    this.container = d3.select(containerSelector);
     this.options = {
       columns: options.columns || 10,
-      tileSize: options.tileSize || 120,
+      tileW: options.tileW || 122,
+      tileH: options.tileH || 98,
       gap: options.gap || 8,
-      ...options
+      onTileClick: options.onTileClick || null
     };
 
-    // Read from CSS variables to match the active design system
-    const cs = getComputedStyle(document.documentElement);
-    this.colors = {
-      up:        cs.getPropertyValue('--stock-up').trim()        || '#22c55e',
-      down:      cs.getPropertyValue('--stock-down').trim()      || '#ef4444',
-      flat:      cs.getPropertyValue('--stock-flat').trim()      || '#5a5662',
-      background:cs.getPropertyValue('--bg-secondary').trim()    || '#111111',
-      border:    cs.getPropertyValue('--glass-border').trim()    || 'rgba(255,255,255,0.07)',
-      text:      cs.getPropertyValue('--text-primary').trim()    || '#e6dcc8',
-      textMuted: cs.getPropertyValue('--text-muted').trim()      || '#5a5458',
-      accent:    cs.getPropertyValue('--accent-primary').trim()  || '#c8952a'
-    };
-
-    this.svg = null;
+    this.data = [];
     this.tiles = null;
+    this.svg = null;
+    this.colors = this.readColors();
     this.init();
   }
 
-  init() {
-    const { columns, tileSize, gap } = this.options;
-    const rows = 5;
-    const width = columns * (tileSize + gap) - gap;
-    const height = rows * (tileSize + gap) - gap;
-
-    this.svg = this.container
-      .append('svg')
-      .attr('viewBox', `0 0 ${width} ${height}`)
-      .attr('preserveAspectRatio', 'xMidYMid meet')
-      .classed('stock-grid', true);
+  readColors() {
+    const css = getComputedStyle(document.documentElement);
+    return {
+      bg: css.getPropertyValue('--surface').trim(),
+      line: css.getPropertyValue('--line').trim(),
+      ink: css.getPropertyValue('--ink').trim(),
+      muted: css.getPropertyValue('--muted').trim(),
+      up: css.getPropertyValue('--up').trim(),
+      down: css.getPropertyValue('--down').trim(),
+      flat: css.getPropertyValue('--flat').trim(),
+      accent: css.getPropertyValue('--accent').trim()
+    };
   }
 
-  update(data) {
-    const { tileSize, gap } = this.options;
+  init() {
+    this.svg = this.container.append('svg').attr('class', 'stock-grid-svg').attr('preserveAspectRatio', 'xMidYMid meet');
+  }
 
-    // Data binding with key function for object constancy
-    const tiles = this.svg
-      .selectAll('.tile')
-      .data(data, d => d.symbol);
+  gridSize(count) {
+    const cols = this.options.columns;
+    const rows = Math.max(1, Math.ceil(Math.max(count, cols) / cols));
+    const width = cols * (this.options.tileW + this.options.gap) - this.options.gap;
+    const height = rows * (this.options.tileH + this.options.gap) - this.options.gap;
+    return { width, height, rows, cols };
+  }
 
-    // ENTER: new tiles
-    const enter = tiles
-      .enter()
-      .append('g')
-      .attr('class', 'tile')
-      .attr('tabindex', -1)
+  update(records = []) {
+    this.data = records.slice(0, 50);
+    const { width, height } = this.gridSize(this.data.length || this.options.columns);
+    this.svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+    const tiles = this.svg.selectAll('g.tile').data(this.data, (d) => d.symbol);
+
+    const enter = tiles.enter().append('g').attr('class', 'tile').style('opacity', 0).attr('tabindex', -1);
+
+    enter.append('rect').attr('class', 'tile-bg').attr('rx', 10).attr('ry', 10).attr('width', this.options.tileW).attr('height', this.options.tileH);
+    enter.append('rect').attr('class', 'tile-edge').attr('x', 0).attr('y', 0).attr('width', 5).attr('height', this.options.tileH).attr('rx', 8).attr('ry', 8);
+    enter.append('text').attr('class', 'tile-symbol').attr('x', 10).attr('y', 24);
+    enter.append('text').attr('class', 'tile-price').attr('x', 10).attr('y', 44);
+    enter.append('text').attr('class', 'tile-signal').attr('x', this.options.tileW - 10).attr('y', 22).attr('text-anchor', 'end');
+    enter.append('rect').attr('class', 'accuracy-track').attr('x', 10).attr('y', this.options.tileH - 16).attr('height', 5).attr('rx', 999).attr('ry', 999).attr('width', this.options.tileW - 20);
+    enter.append('rect').attr('class', 'accuracy-fill').attr('x', 10).attr('y', this.options.tileH - 16).attr('height', 5).attr('rx', 999).attr('ry', 999).attr('width', 0);
+
+    const merged = enter.merge(tiles)
       .attr('transform', (d, i) => {
         const col = i % this.options.columns;
         const row = Math.floor(i / this.options.columns);
-        const x = col * (tileSize + gap);
-        const y = row * (tileSize + gap);
+        const x = col * (this.options.tileW + this.options.gap);
+        const y = row * (this.options.tileH + this.options.gap);
         return `translate(${x}, ${y})`;
-      })
-      .style('opacity', 0);
+      });
 
-    // Tile background
-    enter
-      .append('rect')
-      .attr('class', 'tile-bg')
-      .attr('width', tileSize)
-      .attr('height', tileSize)
-      .attr('rx', 3)
-      .attr('fill', this.colors.background)
-      .attr('stroke', this.colors.border)
-      .attr('stroke-width', 1);
+    merged.select('.tile-bg').attr('fill', this.colors.bg).attr('stroke', this.colors.line).attr('stroke-width', 1.2);
+    merged.select('.tile-edge')
+      .attr('fill', (d) => this.signalColor(d.prediction))
+      .attr('opacity', (d) => Math.max(0.15, +d.confidence || 0.15));
 
-    // Left confidence stripe — width 0→5px based on confidence, color by direction
-    enter
-      .append('rect')
-      .attr('class', 'confidence-stripe')
-      .attr('x', 0)
-      .attr('y', 2)
-      .attr('width', 0)
-      .attr('height', tileSize - 4)
-      .attr('rx', 1);
-
-    // Symbol text — monospace, cream, left-aligned
-    enter
-      .append('text')
-      .attr('class', 'symbol')
-      .attr('x', 10)
-      .attr('y', 28)
-      .attr('text-anchor', 'start')
-      .attr('font-size', 16)
+    merged.select('.tile-symbol')
+      .attr('fill', this.colors.ink)
+      .attr('font-family', 'var(--font-display)')
+      .attr('font-size', 14)
       .attr('font-weight', 600)
-      .attr('font-family', "'JetBrains Mono', monospace")
-      .attr('fill', this.colors.text)
-      .text(d => d.symbol);
+      .text((d) => d.symbol || '--');
 
-    // Current price
-    enter
-      .append('text')
-      .attr('class', 'price')
-      .attr('x', 10)
-      .attr('y', 50)
-      .attr('text-anchor', 'start')
+    merged.select('.tile-price')
+      .attr('fill', this.colors.muted)
+      .attr('font-family', 'var(--font-data)')
       .attr('font-size', 12)
-      .attr('font-family', "'JetBrains Mono', monospace")
-      .attr('fill', this.colors.textMuted)
-      .text(d => d.price ? `$${d.price.toFixed(2)}` : '--');
+      .text((d) => Number.isFinite(+d.price) ? `$${(+d.price).toFixed(2)}` : '--');
 
-    // Change indicator
-    enter
-      .append('text')
-      .attr('class', 'change')
-      .attr('x', 10)
-      .attr('y', 68)
-      .attr('text-anchor', 'start')
+    merged.select('.tile-signal')
+      .attr('fill', (d) => this.signalColor(d.prediction))
+      .attr('font-family', 'var(--font-data)')
       .attr('font-size', 11)
-      .attr('font-family', "'JetBrains Mono', monospace")
-      .attr('font-weight', 500);
+      .attr('font-weight', 600)
+      .text((d) => d.prediction === 'up' ? 'UP' : d.prediction === 'down' ? 'DN' : 'NEU');
 
-    // Prediction direction label (replaces badge circle)
-    enter
-      .append('text')
-      .attr('class', 'prediction-badge')
-      .attr('x', tileSize - 8)
-      .attr('y', 20)
-      .attr('text-anchor', 'end')
-      .attr('font-size', 8)
-      .attr('font-family', "'JetBrains Mono', monospace")
-      .attr('font-weight', 700)
-      .attr('letter-spacing', '0.1em');
-
-    // Prediction direction arrow icon (keep for redundant encoding)
-    enter
-      .append('path')
-      .attr('class', 'prediction-arrow')
-      .attr('transform', `translate(${tileSize - 10}, 15)`)
-      .attr('pointer-events', 'none');
-
-    // Accuracy bar background
-    enter
-      .append('rect')
-      .attr('class', 'accuracy-bg')
-      .attr('x', 10)
-      .attr('y', tileSize - 15)
-      .attr('width', tileSize - 20)
-      .attr('height', 4)
-      .attr('rx', 2)
-      .attr('fill', '#334155');
-
-    // Accuracy bar fill
-    enter
-      .append('rect')
-      .attr('class', 'accuracy-fill')
-      .attr('x', 10)
-      .attr('y', tileSize - 15)
-      .attr('height', 4)
-      .attr('rx', 2);
-
-    // Enter transition — promote tabindex to 0 only after fade-in completes
-    // so focus ring is never visible on an invisible tile (MED-08)
-    enter
-      .transition()
-      .duration(750)
-      .ease(d3.easeCubicOut)
-      .style('opacity', 1)
-      .on('end', function() {
-        d3.select(this).attr('tabindex', 0);
-      });
-
-    // UPDATE: existing tiles
-    const merged = enter.merge(tiles);
-
-    // Update confidence stripe — left-edge accent, max 5px wide
-    merged
-      .select('.confidence-stripe')
-      .transition()
-      .duration(750)
-      .ease(d3.easeCubicInOut)
-      .attr('width', d => {
-        if (!d.confidence) return 0;
-        return Math.max(0, Math.min(5, d.confidence * 5));
-      })
-      .attr('fill', d => {
-        if (!d.prediction) return this.colors.flat;
-        return d.prediction === 'up' ? this.colors.up :
-               d.prediction === 'down' ? this.colors.down :
-               this.colors.flat;
-      });
-
-    // Update price
-    merged
-      .select('.price')
-      .transition()
-      .duration(500)
-      .text(d => d.price ? `$${d.price.toFixed(2)}` : '--');
-
-    // Update change
-    merged
-      .select('.change')
-      .transition()
-      .duration(500)
-      .text(d => {
-        if (!d.change) return '';
-        const sign = d.change >= 0 ? '+' : '';
-        const pct = (d.change * 100).toFixed(2);
-        return `${sign}${pct}%`;
-      })
-      .attr('fill', d => {
-        if (!d.change) return this.colors.flat;
-        if (Math.abs(d.change) < 0.001) return this.colors.flat;
-        return d.change > 0 ? this.colors.up : this.colors.down;
-      });
-
-    // Update prediction badge text
-    merged
-      .select('.prediction-badge')
-      .transition()
-      .duration(500)
-      .text(d => {
-        if (!d.prediction) return '—';
-        if (d.prediction === 'up') return 'UP';
-        if (d.prediction === 'down') return 'DN';
-        return '—';
-      })
-      .attr('fill', d => {
-        if (!d.prediction) return this.colors.flat;
-        return d.prediction === 'up' ? this.colors.up :
-               d.prediction === 'down' ? this.colors.down :
-               this.colors.flat;
-      });
-
-    // Update prediction arrow (redundant encoding for colorblind users)
-    merged
-      .select('.prediction-arrow')
-      .transition()
-      .duration(500)
-      .attr('d', d => {
-        if (!d.prediction || d.prediction === 'flat') return 'M -3,0 A 3,3 0 1,0 3,0 A 3,3 0 1,0 -3,0'; // Circle
-        if (d.prediction === 'up') {
-          return 'M 0,-4 L -3,1 L 3,1 Z'; // Up triangle
-        } else {
-          return 'M 0,4 L -3,-1 L 3,-1 Z'; // Down triangle
-        }
-      })
-      .attr('fill', '#fff')  // White for contrast
-      .attr('stroke', 'none');
-
-    // Update accuracy bar
-    merged
-      .select('.accuracy-fill')
-      .transition()
-      .duration(750)
-      .ease(d3.easeCubicInOut)
-      .attr('width', d => {
-        if (!d.accuracy) return 0;
-        return (tileSize - 20) * (d.accuracy / 100);
-      })
-      .attr('fill', d => {
-        if (!d.accuracy) return this.colors.flat;
-        if (d.accuracy >= 70) return this.colors.up;
-        if (d.accuracy >= 50) return '#fbbf24'; // Yellow
+    merged.select('.accuracy-track').attr('fill', 'rgba(255,255,255,0.08)');
+    merged.select('.accuracy-fill')
+      .attr('fill', (d) => {
+        if (!Number.isFinite(+d.accuracy)) return this.colors.flat;
+        if (+d.accuracy >= 70) return this.colors.up;
+        if (+d.accuracy >= 50) return '#f3b34c';
         return this.colors.down;
+      })
+      .transition().duration(420)
+      .attr('width', (d) => {
+        const pct = Math.max(0, Math.min(100, +d.accuracy || 0));
+        return (this.options.tileW - 20) * (pct / 100);
       });
-
-    // Accessibility: update-only tiles already faded in — keep them keyboard navigable.
-    // Entering tiles start at tabindex=-1 and are promoted to 0 after the
-    // fade-in transition ends, so a focus ring is never shown on an invisible tile.
-    tiles.attr('tabindex', 0);
 
     merged
       .attr('role', 'button')
-      .attr('aria-label', d => {
-        const direction = d.prediction === 'up' ? 'upward' :
-                         d.prediction === 'down' ? 'downward' : 'neutral';
-        const conf = d.confidence ? `${(d.confidence * 100).toFixed(0)}% confidence` : 'unknown confidence';
-        const price = d.price ? `$${d.price.toFixed(2)}` : 'price unavailable';
-        return `${d.symbol} ${d.name || 'stock'}, ${price}, predicted ${direction}, ${conf}`;
+      .attr('aria-label', (d) => {
+        const pred = d.prediction === 'up' ? 'upward' : d.prediction === 'down' ? 'downward' : 'neutral';
+        const conf = Number.isFinite(+d.confidence) ? `${Math.round(+d.confidence * 100)} percent confidence` : 'confidence unavailable';
+        const price = Number.isFinite(+d.price) ? `$${(+d.price).toFixed(2)}` : 'price unavailable';
+        return `${d.symbol || 'unknown stock'}, ${price}, prediction ${pred}, ${conf}`;
       })
-      // Mouse interactions
-      .on('mouseenter', function(event, d) {
-        d3.select(this)
-          .select('.tile-bg')
-          .transition()
-          .duration(200)
-          .attr('stroke', this.colors.accent)
-          .attr('stroke-width', 2);
-      })
-      .on('mouseleave', function() {
-        d3.select(this)
-          .select('.tile-bg')
-          .transition()
-          .duration(200)
-          .attr('stroke', this.colors.border)
-          .attr('stroke-width', 1);
-      })
-      .on('click', (event, d) => {
-        if (this.options.onTileClick) {
-          this.options.onTileClick(d);
-        }
-      })
-      // Keyboard interactions
+      .on('click', (event, d) => this.options.onTileClick && this.options.onTileClick(d))
       .on('keydown', (event, d) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          if (this.options.onTileClick) {
-            this.options.onTileClick(d);
-          }
+          this.options.onTileClick && this.options.onTileClick(d);
         }
       })
-      // Focus indicators
-      .on('focus', function() {
-        d3.select(this)
-          .select('.tile-bg')
-          .attr('stroke', this.colors.accent)
-          .attr('stroke-width', 3);
-      })
-      .on('blur', function() {
-        d3.select(this)
-          .select('.tile-bg')
-          .attr('stroke', this.colors.border)
-          .attr('stroke-width', 1);
-      })
-      .style('cursor', 'pointer')
-      .style('outline', 'none'); // We handle focus visually with stroke
+      .on('mouseenter', (event) => d3.select(event.currentTarget).select('.tile-bg').attr('stroke', this.colors.accent).attr('stroke-width', 2))
+      .on('mouseleave', (event) => d3.select(event.currentTarget).select('.tile-bg').attr('stroke', this.colors.line).attr('stroke-width', 1.2))
+      .on('focusin', (event) => d3.select(event.currentTarget).select('.tile-bg').attr('stroke', this.colors.accent).attr('stroke-width', 2.4))
+      .on('focusout', (event) => d3.select(event.currentTarget).select('.tile-bg').attr('stroke', this.colors.line).attr('stroke-width', 1.2));
 
-    // EXIT: removed tiles
-    tiles
-      .exit()
-      .transition()
-      .duration(500)
-      .style('opacity', 0)
-      .remove();
+    enter.transition().duration(300).style('opacity', 1).on('end', function end() { d3.select(this).attr('tabindex', 0); });
+    tiles.exit().transition().duration(220).style('opacity', 0).remove();
 
     this.tiles = merged;
   }
 
-  highlightTile(symbol) {
-    if (!this.tiles) return;
-    this.tiles
-      .select('.tile-bg')
-      .transition()
-      .duration(200)
-      .attr('stroke', d => d.symbol === symbol ? this.colors.accent : this.colors.border)
-      .attr('stroke-width', d => d.symbol === symbol ? 2 : 1);
+  signalColor(prediction) {
+    if (prediction === 'up') return this.colors.up;
+    if (prediction === 'down') return this.colors.down;
+    return this.colors.flat;
   }
 
-  /**
-   * Patch a single tile's data and re-render only its changed elements.
-   * Called from SSE prediction/price_update events to avoid full grid re-renders.
-   */
+  highlightTile(symbol) {
+    if (!this.tiles) return;
+    this.tiles.select('.tile-bg')
+      .attr('stroke', (d) => d.symbol === symbol ? this.colors.accent : this.colors.line)
+      .attr('stroke-width', (d) => d.symbol === symbol ? 2.6 : 1.2);
+  }
+
   patchTile(symbol, patch) {
     if (!this.tiles || !symbol) return;
-
-    const tile = this.tiles.filter(d => d.symbol === symbol);
+    const tile = this.tiles.filter((d) => d.symbol === symbol);
     if (tile.empty()) return;
 
-    // Merge patch into the existing datum
-    tile.each(function(d) { Object.assign(d, patch); });
+    tile.each(function mutate(d) { Object.assign(d, patch); });
 
-    // Re-render only the affected elements
-    if (patch.prediction !== undefined) {
-      tile.select('.prediction-badge')
-        .transition().duration(400)
-        .text(d => d.prediction === 'up' ? 'UP' : d.prediction === 'down' ? 'DN' : '—')
-        .attr('fill', d => d.prediction === 'up' ? this.colors.up :
-                           d.prediction === 'down' ? this.colors.down : this.colors.flat);
-
-      tile.select('.prediction-arrow')
-        .transition().duration(400)
-        .attr('d', d => {
-          if (d.prediction === 'up') return 'M 0,-4 L -3,1 L 3,1 Z';
-          if (d.prediction === 'down') return 'M 0,4 L -3,-1 L 3,-1 Z';
-          return 'M -3,0 A 3,3 0 1,0 3,0 A 3,3 0 1,0 -3,0';
-        });
-
-      const stripeColor = patch.prediction === 'up' ? this.colors.up :
-                          patch.prediction === 'down' ? this.colors.down : this.colors.flat;
-      tile.select('.confidence-stripe')
-        .transition().duration(400)
-        .attr('fill', stripeColor)
-        .attr('width', patch.confidence ? 5 * patch.confidence : 2);
-
-      // Flash animation
-      tile.classed('tile-new-prediction', true);
-      setTimeout(() => tile.classed('tile-new-prediction', false), 900);
+    if (patch.prediction !== undefined || patch.confidence !== undefined) {
+      tile.select('.tile-edge')
+        .attr('fill', (d) => this.signalColor(d.prediction))
+        .attr('opacity', (d) => Math.max(0.15, +d.confidence || 0.15));
+      tile.select('.tile-signal').attr('fill', (d) => this.signalColor(d.prediction))
+        .text((d) => d.prediction === 'up' ? 'UP' : d.prediction === 'down' ? 'DN' : 'NEU');
+      tile.classed('tile-flash', true);
+      setTimeout(() => tile.classed('tile-flash', false), 750);
     }
 
     if (patch.price !== undefined) {
-      tile.select('.price')
-        .transition().duration(400)
-        .text(d => d.price ? `$${(+d.price).toFixed(2)}` : '—');
+      tile.select('.tile-price').text((d) => Number.isFinite(+d.price) ? `$${(+d.price).toFixed(2)}` : '--');
     }
   }
 
   destroy() {
-    if (this.svg) {
-      this.svg.remove();
-    }
+    if (this.svg) this.svg.remove();
   }
 }
 
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = StockGrid;
-}
+window.StockGrid = StockGrid;

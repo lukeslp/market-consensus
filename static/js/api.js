@@ -1,97 +1,39 @@
-/**
- * Foresight API Client
- * Clean interface for REST endpoints with error handling
- */
-
-class ForesightAPI {
-  constructor(baseURL = '') {
-    this.baseURL = baseURL;
-  }
-
-  async request(endpoint, options = {}) {
-    try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
-        },
-        ...options
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({
-          error: 'Unknown Error',
-          message: response.statusText
-        }));
-        throw new APIError(error.message, response.status, error);
-      }
-
-      return await response.json();
-    } catch (error) {
-      if (error instanceof APIError) {
-        throw error;
-      }
-      throw new APIError(error.message, 0, { originalError: error });
-    }
-  }
-
-  // Health check
-  async health() {
-    return this.request('/health');
-  }
-
-  // Current cycle
-  async getCurrentCycle() {
-    return this.request('/api/current');
-  }
-
-  // Provider statistics
-  async getStats() {
-    return this.request('/api/stats');
-  }
-
-  // Historical cycles
-  async getHistory(page = 1, limit = 20) {
-    return this.request(`/api/history?page=${page}&limit=${limit}`);
-  }
-
-  // Stock details
-  async getStock(symbol) {
-    return this.request(`/api/stock/${symbol}`);
-  }
-
-  // Start new cycle
-  async startCycle() {
-    return this.request('/api/cycle/start', {
-      method: 'POST'
-    });
-  }
-
-  // Stop cycle
-  async stopCycle(cycleId) {
-    return this.request(`/api/cycle/${cycleId}/stop`, {
-      method: 'POST'
-    });
-  }
-
-  // SSE connection
-  createEventSource() {
-    return new EventSource(`${this.baseURL}/api/stream`);
-  }
-}
-
 class APIError extends Error {
-  constructor(message, status, data) {
+  constructor(message, status, payload) {
     super(message);
     this.name = 'APIError';
     this.status = status;
-    this.data = data;
+    this.payload = payload;
   }
 }
 
-// Export singleton instance
-const api = new ForesightAPI();
+class ForesightAPI {
+  constructor(base = '') {
+    this.base = base;
+  }
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { ForesightAPI, APIError, api };
+  async request(path, options = {}) {
+    const response = await fetch(`${this.base}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options
+    });
+
+    if (!response.ok) {
+      let payload = null;
+      try { payload = await response.json(); } catch (err) { payload = null; }
+      throw new APIError(payload?.message || response.statusText, response.status, payload);
+    }
+
+    return response.json();
+  }
+
+  health() { return this.request('/health'); }
+  current() { return this.request('/api/current'); }
+  stats() { return this.request('/api/stats'); }
+  stock(symbol) { return this.request(`/api/stock/${symbol}`); }
+  startCycle() { return this.request('/api/cycle/start', { method: 'POST' }); }
+  stopCycle(id) { return this.request(`/api/cycle/${id}/stop`, { method: 'POST' }); }
 }
+
+window.ForesightAPI = ForesightAPI;
+window.APIError = APIError;

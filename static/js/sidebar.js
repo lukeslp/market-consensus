@@ -1,428 +1,127 @@
-/**
- * Sidebar Visualization
- * D3.js v7 - Provider statistics and leaderboard
- */
-
 class Sidebar {
-  constructor(container, options = {}) {
-    this.container = d3.select(container);
-    this.options = {
-      width: options.width || 300,
-      ...options
-    };
+  constructor(containerSelector, options = {}) {
+    this.container = d3.select(containerSelector);
+    this.options = { width: options.width || 280, ...options };
+    this.colors = this.readColors();
 
-    this.colors = {
-      up: getComputedStyle(document.documentElement).getPropertyValue('--stock-up').trim(),
-      down: getComputedStyle(document.documentElement).getPropertyValue('--stock-down').trim(),
-      flat: getComputedStyle(document.documentElement).getPropertyValue('--stock-flat').trim(),
-      background: getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary').trim(),
-      text: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(),
-      textMuted: getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim(),
-      accentPrimary: getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim(),
-      glassBg: 'rgba(255, 255, 255, 0.05)',
-      glassBorder: 'rgba(255, 255, 255, 0.1)'
-    };
-
+    this.statsWrap = null;
     this.svg = null;
     this.init();
   }
 
-  init() {
-    // Container for stats cards
-    this.statsContainer = this.container
-      .append('div')
-      .attr('class', 'sidebar-stats');
-
-    // Leaderboard SVG — role="list" so individual provider rows are reachable
-    this.svg = this.container
-      .append('svg')
-      .attr('width', this.options.width)
-      .attr('role', 'list')
-      .attr('aria-label', 'Provider accuracy leaderboard')
-      .classed('sidebar-leaderboard', true);
-  }
-
-  update(stats) {
-    // API returns {by_provider: [], overall_accuracy, total_predictions, completed_cycles, total_cycles}
-    // Transform to expected format {summary: {...}, providers: [...]}
-    if (!stats) {
-      this.showEmpty();
-      return;
-    }
-
-    const summary = {
-      total_predictions: stats.total_predictions || 0,
-      accuracy_rate: stats.overall_accuracy,
-      active_stocks: 0, // Not provided by current API
-      avg_confidence: null, // Not provided by current API
-      completed_cycles: stats.completed_cycles || 0
+  readColors() {
+    const css = getComputedStyle(document.documentElement);
+    return {
+      ink: css.getPropertyValue('--ink').trim(),
+      muted: css.getPropertyValue('--muted').trim(),
+      line: css.getPropertyValue('--line').trim(),
+      up: css.getPropertyValue('--up').trim(),
+      down: css.getPropertyValue('--down').trim(),
+      accent: css.getPropertyValue('--accent').trim()
     };
+  }
 
-    const providers = stats.by_provider || [];
+  init() {
+    this.container.html('');
+    this.statsWrap = this.container.append('div').attr('class', 'sidebar-stats');
+    this.svg = this.container.append('svg').attr('class', 'sidebar-leaderboard').attr('role', 'list');
+  }
 
-    if (providers.length === 0) {
+  update(payload) {
+    if (!payload || !Array.isArray(payload.by_provider) || payload.by_provider.length === 0) {
       this.showEmpty();
       return;
     }
 
-    this.updateStats(summary);
-    this.updateLeaderboard(providers);
+    this.renderStats(payload);
+    this.renderLeaderboard(payload.by_provider.slice());
   }
 
-  updateStats(summary) {
-    if (!summary) return;
-
-    const statsData = [
-      {
-        label: 'Total Predictions',
-        value: summary.total_predictions || 0,
-        icon: '📊'
-      },
-      {
-        label: 'Accuracy Rate',
-        value: summary.accuracy_rate ? `${(summary.accuracy_rate * 100).toFixed(1)}%` : 'N/A',
-        icon: '🎯',
-        color: summary.accuracy_rate >= 0.7 ? this.colors.up :
-               summary.accuracy_rate >= 0.5 ? '#fbbf24' :
-               this.colors.down
-      },
-      {
-        label: 'Active Stocks',
-        value: summary.active_stocks || 0,
-        icon: '📈'
-      },
-      {
-        label: 'Avg Confidence',
-        value: summary.avg_confidence ? `${(summary.avg_confidence * 100).toFixed(0)}%` : 'N/A',
-        icon: '💪'
-      }
+  renderStats(payload) {
+    const rows = [
+      { label: 'Completed Cycles', value: payload.completed_cycles ?? 0 },
+      { label: 'Total Cycles', value: payload.total_cycles ?? 0 },
+      { label: 'Predictions', value: payload.total_predictions ?? 0 },
+      { label: 'Overall Accuracy', value: Number.isFinite(+payload.overall_accuracy) ? `${(+payload.overall_accuracy * 100).toFixed(1)}%` : 'N/A' }
     ];
 
-    // Bind data
-    const cards = this.statsContainer
-      .selectAll('.stat-card')
-      .data(statsData, d => d.label);
+    const cards = this.statsWrap.selectAll('article.stat').data(rows, (d) => d.label);
+    const enter = cards.enter().append('article').attr('class', 'stat')
+      .style('padding', '0.55rem 0.65rem')
+      .style('border', `1px solid ${this.colors.line}`)
+      .style('border-radius', '8px')
+      .style('margin-bottom', '0.45rem')
+      .style('background', 'rgba(255,255,255,0.02)');
 
-    // Enter
-    const cardEnter = cards.enter()
-      .append('div')
-      .attr('class', 'stat-card')
-      .style('background', this.colors.glassBg)
-      .style('border', `1px solid ${this.colors.glassBorder}`)
-      .style('border-radius', '4px')
-      .style('padding', '16px')
-      .style('margin-bottom', '12px')
-      .style('opacity', 0);
+    enter.append('p').attr('class', 'stat-label').style('margin', '0').style('color', this.colors.muted).style('font-size', '0.68rem');
+    enter.append('p').attr('class', 'stat-value').style('margin', '0.2rem 0 0').style('font-size', '1rem').style('font-weight', '600');
 
-    cardEnter.append('div')
-      .attr('class', 'stat-icon')
-      .attr('aria-hidden', 'true')
-      .style('font-size', '24px')
-      .style('margin-bottom', '8px')
-      .text(d => d.icon);
+    const merged = enter.merge(cards);
+    merged.select('.stat-label').text((d) => d.label);
+    merged.select('.stat-value').text((d) => d.value).style('color', this.colors.ink);
 
-    cardEnter.append('div')
-      .attr('class', 'stat-value')
-      .style('font-size', '28px')
-      .style('font-weight', '700')
-      .style('margin-bottom', '4px');
-
-    cardEnter.append('div')
-      .attr('class', 'stat-label')
-      .style('font-size', '12px')
-      .style('color', this.colors.textMuted)
-      .style('text-transform', 'uppercase')
-      .style('letter-spacing', '0.05em')
-      .text(d => d.label);
-
-    // Update
-    const cardMerge = cardEnter.merge(cards);
-
-    cardMerge.select('.stat-value')
-      .style('color', d => d.color || this.colors.text)
-      .text(d => d.value);
-
-    cardMerge
-      .transition()
-      .duration(750)
-      .style('opacity', 1);
-
-    // Exit
-    cards.exit()
-      .transition()
-      .duration(500)
-      .style('opacity', 0)
-      .remove();
+    cards.exit().remove();
   }
 
-  updateLeaderboard(providers) {
-    // Sort by accuracy descending
-    providers.sort((a, b) => (b.accuracy_rate || 0) - (a.accuracy_rate || 0));
+  renderLeaderboard(providers) {
+    providers.sort((a, b) => (+b.accuracy_rate || 0) - (+a.accuracy_rate || 0));
 
-    const rowHeight = 80;
-    const headerHeight = 60;
-    const height = headerHeight + providers.length * rowHeight + 20;
+    const rowH = 46;
+    const width = this.options.width;
+    const height = providers.length * rowH + 10;
+    this.svg.attr('viewBox', `0 0 ${width} ${height}`).attr('height', height);
 
-    this.svg
-      .transition()
-      .duration(750)
-      .attr('height', height);
+    const rows = this.svg.selectAll('g.row').data(providers, (d) => d.provider);
+    const enter = rows.enter().append('g').attr('class', 'row').attr('role', 'listitem').attr('tabindex', 0);
 
-    // Header
-    let header = this.svg.selectAll('.leaderboard-header').data([null]);
-    const headerEnter = header.enter()
-      .append('g')
-      .attr('class', 'leaderboard-header');
+    enter.append('rect').attr('class', 'row-bg').attr('x', 2).attr('rx', 8).attr('ry', 8).attr('width', width - 4).attr('height', rowH - 6);
+    enter.append('text').attr('class', 'provider-name').attr('x', 10).attr('y', 19);
+    enter.append('text').attr('class', 'provider-meta').attr('x', 10).attr('y', 34);
+    enter.append('rect').attr('class', 'accuracy-track').attr('x', width - 118).attr('y', 16).attr('width', 78).attr('height', 10).attr('rx', 999);
+    enter.append('rect').attr('class', 'accuracy-fill').attr('x', width - 118).attr('y', 16).attr('height', 10).attr('rx', 999);
+    enter.append('text').attr('class', 'accuracy-text').attr('x', width - 20).attr('y', 24).attr('text-anchor', 'middle');
 
-    headerEnter.append('text')
-      .attr('x', 16)
-      .attr('y', 30)
-      .attr('font-size', 18)
-      .attr('font-weight', 600)
-      .attr('fill', this.colors.text)
-      .text('🏆 Provider Leaderboard');
+    const merged = enter.merge(rows).attr('transform', (d, i) => `translate(0,${i * rowH})`);
 
-    headerEnter.append('line')
-      .attr('x1', 16)
-      .attr('x2', this.options.width - 16)
-      .attr('y1', headerHeight - 10)
-      .attr('y2', headerHeight - 10)
-      .attr('stroke', this.colors.glassBorder)
-      .attr('stroke-width', 1);
+    merged.select('.row-bg').attr('fill', 'rgba(255,255,255,0.02)').attr('stroke', this.colors.line);
+    merged.select('.provider-name').attr('fill', this.colors.ink).attr('font-size', 12).attr('font-family', 'var(--font-display)').text((d, i) => `#${i + 1} ${this.prettyProvider(d.provider)}`);
+    merged.select('.provider-meta').attr('fill', this.colors.muted).attr('font-size', 10).attr('font-family', 'var(--font-data)').text((d) => `${d.total_predictions || 0} predictions`);
+    merged.select('.accuracy-track').attr('fill', 'rgba(255,255,255,0.08)');
+    merged.select('.accuracy-fill')
+      .attr('fill', (d) => this.accuracyColor(+d.accuracy_rate || 0))
+      .transition().duration(420)
+      .attr('width', (d) => 78 * Math.max(0, Math.min(1, +d.accuracy_rate || 0)));
+    merged.select('.accuracy-text').attr('fill', this.colors.ink).attr('font-size', 10).attr('font-family', 'var(--font-data)').text((d) => `${Math.round((+d.accuracy_rate || 0) * 100)}%`);
 
-    // Provider rows
-    const rows = this.svg.selectAll('.provider-row')
-      .data(providers, d => d.provider);
+    merged
+      .attr('aria-label', (d, i) => `Rank ${i + 1}, ${this.prettyProvider(d.provider)}, ${d.total_predictions || 0} predictions, ${Math.round((+d.accuracy_rate || 0) * 100)} percent accuracy`)
+      .on('focusin', (event) => d3.select(event.currentTarget).select('.row-bg').attr('stroke', this.colors.accent))
+      .on('focusout', (event) => d3.select(event.currentTarget).select('.row-bg').attr('stroke', this.colors.line))
+      .on('mouseenter', (event) => d3.select(event.currentTarget).select('.row-bg').attr('stroke', this.colors.accent))
+      .on('mouseleave', (event) => d3.select(event.currentTarget).select('.row-bg').attr('stroke', this.colors.line));
 
-    // Enter
-    const rowEnter = rows.enter()
-      .append('g')
-      .attr('class', 'provider-row')
-      .attr('role', 'listitem')
-      .attr('tabindex', 0)
-      .attr('transform', (d, i) => `translate(0, ${headerHeight + i * rowHeight})`)
-      .style('opacity', 0);
-
-    // Background
-    rowEnter.append('rect')
-      .attr('class', 'row-bg')
-      .attr('x', 8)
-      .attr('y', 5)
-      .attr('width', this.options.width - 16)
-      .attr('height', rowHeight - 10)
-      .attr('rx', 8)
-      .attr('fill', this.colors.glassBg)
-      .attr('stroke', this.colors.glassBorder)
-      .attr('stroke-width', 1);
-
-    // Rank badge
-    rowEnter.append('circle')
-      .attr('class', 'rank-badge')
-      .attr('cx', 30)
-      .attr('cy', rowHeight / 2)
-      .attr('r', 14)
-      .attr('fill', (d, i) => {
-        if (i === 0) return '#fbbf24'; // Gold
-        if (i === 1) return '#94a3b8'; // Silver
-        if (i === 2) return '#d97706'; // Bronze
-        return this.colors.background;
-      });
-
-    rowEnter.append('text')
-      .attr('class', 'rank-text')
-      .attr('x', 30)
-      .attr('y', rowHeight / 2)
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'middle')
-      .attr('font-size', 12)
-      .attr('font-weight', 600)
-      .attr('fill', this.colors.text)
-      .text((d, i) => i + 1);
-
-    // Provider name
-    rowEnter.append('text')
-      .attr('class', 'provider-name')
-      .attr('x', 55)
-      .attr('y', rowHeight / 2 - 8)
-      .attr('font-size', 14)
-      .attr('font-weight', 600)
-      .attr('fill', this.colors.text)
-      .text(d => this.formatProviderName(d.provider));
-
-    // Prediction count
-    rowEnter.append('text')
-      .attr('class', 'prediction-count')
-      .attr('x', 55)
-      .attr('y', rowHeight / 2 + 12)
-      .attr('font-size', 11)
-      .attr('fill', this.colors.textMuted)
-      .text(d => `${d.total_predictions || 0} predictions`);
-
-    // Accuracy bar background
-    rowEnter.append('rect')
-      .attr('class', 'accuracy-bg')
-      .attr('x', this.options.width - 140)
-      .attr('y', rowHeight / 2 - 8)
-      .attr('width', 80)
-      .attr('height', 16)
-      .attr('rx', 8)
-      .attr('fill', this.colors.background)
-      .attr('stroke', this.colors.glassBorder)
-      .attr('stroke-width', 1);
-
-    // Accuracy bar fill
-    rowEnter.append('rect')
-      .attr('class', 'accuracy-fill')
-      .attr('x', this.options.width - 140)
-      .attr('y', rowHeight / 2 - 8)
-      .attr('width', 0)
-      .attr('height', 16)
-      .attr('rx', 8);
-
-    // Accuracy percentage text
-    rowEnter.append('text')
-      .attr('class', 'accuracy-text')
-      .attr('x', this.options.width - 30)
-      .attr('y', rowHeight / 2)
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'middle')
-      .attr('font-size', 12)
-      .attr('font-weight', 600);
-
-    // Update
-    const rowMerge = rowEnter.merge(rows);
-
-    // Animate positions
-    rowMerge
-      .transition()
-      .duration(750)
-      .attr('transform', (d, i) => `translate(0, ${headerHeight + i * rowHeight})`)
-      .style('opacity', 1);
-
-    // Update rank badges
-    rowMerge.select('.rank-badge')
-      .transition()
-      .duration(750)
-      .attr('fill', (d, i) => {
-        if (i === 0) return '#fbbf24';
-        if (i === 1) return '#94a3b8';
-        if (i === 2) return '#d97706';
-        return this.colors.background;
-      });
-
-    rowMerge.select('.rank-text')
-      .transition()
-      .duration(750)
-      .text((d, i) => i + 1);
-
-    // Update accuracy bars
-    rowMerge.select('.accuracy-fill')
-      .transition()
-      .duration(1000)
-      .ease(d3.easeCubicOut)
-      .attr('width', d => {
-        const accuracy = d.accuracy_rate || 0;
-        return 80 * accuracy;
-      })
-      .attr('fill', d => {
-        const accuracy = d.accuracy_rate || 0;
-        if (accuracy >= 0.7) return this.colors.up;
-        if (accuracy >= 0.5) return '#fbbf24';
-        return this.colors.down;
-      });
-
-    // Update accuracy text
-    rowMerge.select('.accuracy-text')
-      .transition()
-      .duration(1000)
-      .tween('text', function(d) {
-        const i = d3.interpolateNumber(0, (d.accuracy_rate || 0) * 100);
-        return function(t) {
-          d3.select(this).text(`${i(t).toFixed(0)}%`);
-        };
-      })
-      .attr('fill', d => {
-        const accuracy = d.accuracy_rate || 0;
-        if (accuracy >= 0.7) return this.colors.up;
-        if (accuracy >= 0.5) return '#fbbf24';
-        return this.colors.down;
-      });
-
-    // Update prediction count
-    rowMerge.select('.prediction-count')
-      .text(d => `${d.total_predictions || 0} predictions`);
-
-    // Accessible label — updated on each render pass so it reflects current rank/accuracy
-    rowMerge
-      .attr('aria-label', (d, i) => {
-        const rank = i + 1;
-        const name = this.formatProviderName(d.provider);
-        const preds = d.total_predictions || 0;
-        const acc = d.accuracy_rate ? `${(d.accuracy_rate * 100).toFixed(0)}% accuracy` : 'no accuracy data';
-        return `Rank ${rank}: ${name}, ${preds} predictions, ${acc}`;
-      });
-
-    // Highlight helper shared by hover and focus handlers
-    const highlightRow = (el, active) => {
-      d3.select(el).select('.row-bg')
-        .transition()
-        .duration(200)
-        .attr('stroke', active ? this.colors.accentPrimary : this.colors.glassBorder)
-        .attr('stroke-width', active ? 2 : 1);
-    };
-
-    // Hover and focus effects (arrow functions so `this` stays the Sidebar instance)
-    rowMerge
-      .on('mouseenter', (event) => highlightRow(event.currentTarget, true))
-      .on('mouseleave', (event) => highlightRow(event.currentTarget, false))
-      .on('focusin',    (event) => highlightRow(event.currentTarget, true))
-      .on('focusout',   (event) => highlightRow(event.currentTarget, false))
-      .style('cursor', 'default');
-
-    // Exit
-    rows.exit()
-      .transition()
-      .duration(500)
-      .style('opacity', 0)
-      .remove();
+    rows.exit().remove();
   }
 
-  formatProviderName(provider) {
-    const names = {
-      'anthropic': 'Anthropic',
-      'xai': 'xAI',
-      'gemini': 'Gemini',
-      'openai': 'OpenAI',
-      'mistral': 'Mistral',
-      'cohere': 'Cohere',
-      'perplexity': 'Perplexity'
-    };
-    return names[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+  accuracyColor(value) {
+    if (value >= 0.7) return this.colors.up;
+    if (value >= 0.5) return this.colors.accent;
+    return this.colors.down;
+  }
+
+  prettyProvider(raw = '') {
+    const map = { xai: 'xAI', anthropic: 'Anthropic', gemini: 'Gemini', mistral: 'Mistral', perplexity: 'Perplexity', openai: 'OpenAI' };
+    return map[raw] || `${raw}`;
   }
 
   showEmpty() {
-    this.statsContainer.selectAll('*').remove();
-    this.svg.selectAll('*').remove();
-
-    this.svg.attr('height', 200);
-    this.svg.append('text')
-      .attr('x', this.options.width / 2)
-      .attr('y', 100)
-      .attr('text-anchor', 'middle')
-      .attr('fill', this.colors.textMuted)
-      .attr('font-size', 14)
-      .text('No provider statistics available');
+    this.container.html('<p style="margin:0;color:var(--muted);font-size:0.8rem;">No provider statistics available.</p>');
   }
 
   destroy() {
-    this.statsContainer.remove();
-    if (this.svg) {
-      this.svg.remove();
-    }
+    if (this.statsWrap) this.statsWrap.remove();
+    if (this.svg) this.svg.remove();
   }
 }
 
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = Sidebar;
-}
+window.Sidebar = Sidebar;

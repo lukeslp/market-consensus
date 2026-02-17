@@ -3,7 +3,10 @@ Prediction service
 Handles LLM-based stock predictions
 """
 import sys
-from typing import Dict, Optional
+import json
+import re
+import sqlite3
+from typing import Dict, Optional, List
 import logging
 
 # Import from shared library
@@ -23,7 +26,9 @@ class PredictionService:
             config: Flask config object
         """
         self.config = config
+        self.db_path = config.get('DB_PATH')
         self.providers = {}
+        self.provider_runtime = {}
 
         # Initialize configured providers
         self._init_providers()
@@ -47,9 +52,138 @@ class PredictionService:
                     logger.info(f'Initialized {provider_name} for {role}')
                 
                 self.providers[role] = provider
+                self._mark_provider_success(provider_name)
 
             except Exception as e:
                 logger.error(f'Failed to initialize {provider_name} for {role}: {str(e)}')
+                self._mark_provider_failure(provider_name, e)
+
+    def _complete_with_optional_model(self, provider, messages, model=None):
+        """
+        Call provider.complete without passing model when unset.
+        Some provider SDKs reject model=None.
+        """
+        kwargs = {'messages': messages}
+        if model:
+            kwargs['model'] = model
+        return provider.complete(**kwargs)
+
+    def _mark_provider_success(self, provider_name: str):
+        state = self.provider_runtime.setdefault(provider_name, {})
+        state['healthy'] = True
+        state['last_error'] = None
+        state['last_failed_at'] = None
+        self._persist_provider_runtime(provider_name, True, None)
+
+    def _mark_provider_failure(self, provider_name: str, error: Exception):
+        from datetime import datetime
+        state = self.provider_runtime.setdefault(provider_name, {})
+        state['healthy'] = False
+        state['last_error'] = str(error)
+        state['last_failed_at'] = datetime.now().isoformat()
+        self._persist_provider_runtime(provider_name, False, str(error))
+
+    def _persist_provider_runtime(self, provider_name: str, healthy: bool, error: Optional[str]):
+        """Persist provider runtime status to SQLite so all processes share it."""
+        if not self.db_path:
+            return
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS provider_runtime (
+                    provider TEXT PRIMARY KEY,
+                    healthy INTEGER NOT NULL DEFAULT 1,
+                    last_error TEXT,
+                    last_failed_at TEXT,
+                    last_success_at TEXT
+                )
+            """)
+            if healthy:
+                conn.execute("""
+                    INSERT INTO provider_runtime(provider, healthy, last_error, last_failed_at, last_success_at)
+                    VALUES (?, 1, NULL, NULL, datetime('now'))
+                    ON CONFLICT(provider) DO UPDATE SET
+                        healthy=1,
+                        last_error=NULL,
+                        last_failed_at=NULL,
+                        last_success_at=datetime('now')
+                """, (provider_name,))
+            else:
+                conn.execute("""
+                    INSERT INTO provider_runtime(provider, healthy, last_error, last_failed_at, last_success_at)
+                    VALUES (?, 0, ?, datetime('now'), NULL)
+                    ON CONFLICT(provider) DO UPDATE SET
+                        healthy=0,
+                        last_error=excluded.last_error,
+                        last_failed_at=datetime('now')
+                """, (provider_name, error or 'Unknown provider error'))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.debug(f'Failed to persist provider runtime status for {provider_name}: {e}')
+
+    def get_provider_runtime_status(self) -> Dict:
+        """
+        Return provider runtime health based on init + most recent calls.
+        """
+        providers = set(self.provider_runtime.keys())
+        providers.update(self.config.get('PROVIDERS', {}).values())
+        status = {}
+        for name in providers:
+            base = self.provider_runtime.get(name, {})
+            status[name] = {
+                'healthy': base.get('healthy', True),
+                'last_error': base.get('last_error'),
+                'last_failed_at': base.get('last_failed_at')
+            }
+
+        # Merge persisted status from SQLite so runtime errors are visible across processes
+        if self.db_path:
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=5)
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("SELECT provider, healthy, last_error, last_failed_at FROM provider_runtime").fetchall()
+                conn.close()
+                for row in rows:
+                    status[row['provider']] = {
+                        'healthy': bool(row['healthy']),
+                        'last_error': row['last_error'],
+                        'last_failed_at': row['last_failed_at']
+                    }
+            except Exception as e:
+                logger.debug(f'Failed reading provider_runtime table: {e}')
+        return status
+
+    @staticmethod
+    def base_provider_weights() -> Dict[str, float]:
+        """
+        Baseline trust weights before performance adjustment.
+        """
+        return {
+            'xai': 1.0,         # cheap search/context
+            'gemini': 1.0,      # cheap synthesis/search
+            'anthropic': 1.2,   # strong reasoning
+            'openai': 1.2,      # strong reasoning
+            'perplexity': 1.1,  # web-grounded
+            'mistral': 0.8,     # side input
+            'cohere': 0.6,      # low default weight
+        }
+
+    def build_provider_weights(self, performance_map: Dict[str, float]) -> Dict[str, float]:
+        """
+        Build dynamic provider weights using historical accuracy where available.
+        """
+        weights = {}
+        for provider, base in self.base_provider_weights().items():
+            acc = performance_map.get(provider)
+            if acc is None:
+                # Neutral prior when provider has no evaluated history
+                factor = 1.0
+            else:
+                # Map accuracy [0..1] to factor [0.5..1.5]
+                factor = max(0.5, min(1.5, 0.5 + float(acc)))
+            weights[provider] = round(base * factor, 4)
+        return weights
 
     def debate_and_vote(self, symbol: str, stock_data: Dict, analyst_predictions: list) -> Optional[Dict]:
         """
@@ -102,7 +236,8 @@ Return your final decision as JSON:
                 model = self.config.get('MODEL_OVERRIDES', {}).get(p_name)
                 
                 from llm_providers import Message
-                response = provider.complete(
+                response = self._complete_with_optional_model(
+                    provider,
                     messages=[Message(role='user', content=prompt)],
                     model=model
                 )
@@ -116,6 +251,7 @@ Return your final decision as JSON:
                     content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
                 
                 result = json.loads(content)
+                self._mark_provider_success(p_name)
 
                 return {
                     'provider': p_name,
@@ -127,6 +263,7 @@ Return your final decision as JSON:
 
             except Exception as e:
                 logger.warning(f'Synthesis failed with {p_name}: {e}')
+                self._mark_provider_failure(p_name, e)
                 continue
         
         logger.error(f'All synthesis providers failed for {symbol}')
@@ -142,17 +279,7 @@ Return your final decision as JSON:
         Returns:
             List of stock symbols
         """
-        if 'discovery' not in self.providers:
-            logger.error('Discovery provider not configured. Available providers: %s', list(self.providers.keys()))
-            return []
-
-        try:
-            provider = self.providers['discovery']
-            provider_name = self.config['PROVIDERS']['discovery']
-            model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
-            logger.debug(f'Using {provider.__class__.__name__} ({model or "default"}) for stock discovery')
-
-            prompt = f"""You are a stock market analyst. Identify {count} publicly traded stocks
+        prompt = f"""You are a stock market analyst. Identify {count} publicly traded stocks
 that are currently interesting for short-term trading (next 1-7 days).
 
 Focus on stocks with:
@@ -164,41 +291,191 @@ Focus on stocks with:
 Return ONLY a JSON array of ticker symbols, nothing else.
 Example: ["AAPL", "MSFT", "TSLA"]"""
 
-            # Use standard provider interface: complete(messages)
-            from llm_providers import Message
-            logger.debug(f'Calling provider.complete() for stock discovery')
-            response = provider.complete(
-                messages=[Message(role='user', content=prompt)],
-                model=model
-            )
-            logger.debug(f'Provider returned: {response.content[:200]}...')
+        # Discovery fallback chain: configured provider first, then alternates.
+        primary = self.config['PROVIDERS'].get('discovery')
+        chain = [primary, 'xai', 'anthropic', 'gemini', 'mistral']
+        chain = list(dict.fromkeys([p for p in chain if p]))
 
-            # Parse JSON response (response is CompletionResponse object)
-            import json
-            symbols = json.loads(response.content)
-            logger.debug(f'Parsed symbols: {symbols}')
+        from llm_providers import Message
+        last_error = None
 
-            if isinstance(symbols, list):
-                result = [s.upper() for s in symbols[:count]]
-                logger.debug(f'Discovery returning: {result}')
-                return result
+        for provider_name in chain:
+            try:
+                provider = None
+                for role, p in self.providers.items():
+                    if self.config['PROVIDERS'].get(role) == provider_name:
+                        provider = p
+                        break
+                if not provider:
+                    provider = ProviderFactory.get_provider(provider_name)
 
-            logger.warning(f'Response was not a list: {type(symbols)}')
+                model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
+                logger.debug(f'Using {provider_name} ({model or "default"}) for stock discovery')
+                response = self._complete_with_optional_model(
+                    provider,
+                    messages=[Message(role='user', content=prompt)],
+                    model=model
+                )
+
+                symbols = self._parse_discovery_symbols(response.content, count)
+                if symbols:
+                    self._mark_provider_success(provider_name)
+                    logger.info(f'Stock discovery succeeded with {provider_name}: {symbols}')
+                    return symbols
+
+                # Empty parse is a soft failure for this provider
+                err = ValueError(f'{provider_name} returned no parseable symbols')
+                self._mark_provider_failure(provider_name, err)
+                last_error = err
+
+            except Exception as e:
+                self._mark_provider_failure(provider_name, e)
+                last_error = e
+                logger.warning(f'Discovery failed with {provider_name}: {e}')
+
+        if last_error:
+            logger.error(f'Error discovering stocks: {last_error}')
+        return []
+
+    def discover_stocks_debate(self, count: int, provider_weights: Dict[str, float]) -> List[str]:
+        """
+        Multi-provider discovery debate:
+        1) xAI + Gemini (cheap, fast)
+        2) Anthropic + OpenAI + Perplexity (join)
+        3) Mistral + Cohere (side input)
+        Returns weighted-vote top symbols.
+        """
+        stage_order = ['xai', 'gemini', 'anthropic', 'openai', 'perplexity', 'mistral', 'cohere']
+        votes: Dict[str, float] = {}
+        provenance: Dict[str, List[str]] = {}
+
+        for provider_name in stage_order:
+            try:
+                symbols = self._discover_symbols_from_provider(provider_name, count)
+                if not symbols:
+                    continue
+                weight = provider_weights.get(provider_name, self.base_provider_weights().get(provider_name, 1.0))
+                for symbol in symbols:
+                    votes[symbol] = votes.get(symbol, 0.0) + weight
+                    provenance.setdefault(symbol, []).append(provider_name)
+                logger.info(f'Discovery vote from {provider_name}: {symbols} (weight={weight:.2f})')
+            except Exception as e:
+                self._mark_provider_failure(provider_name, e)
+                logger.warning(f'Discovery debate provider failed ({provider_name}): {e}')
+
+        ranked = sorted(votes.items(), key=lambda x: x[1], reverse=True)
+        symbols = [symbol for symbol, _ in ranked[:count]]
+        if symbols:
+            logger.info(f'Discovery debate selected: {symbols} | provenance: {provenance}')
+        return symbols
+
+    def _discover_symbols_from_provider(self, provider_name: str, count: int) -> List[str]:
+        """Run discovery prompt with a specific provider."""
+        provider = None
+        for role, p in self.providers.items():
+            if self.config['PROVIDERS'].get(role) == provider_name:
+                provider = p
+                break
+        if not provider:
+            provider = ProviderFactory.get_provider(provider_name)
+
+        model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
+        prompt = f"""You are a stock market analyst. Identify {count} publicly traded stocks
+that are currently interesting for short-term trading (next 1-7 days).
+
+Focus on stocks with:
+- Recent news or events
+- High volatility
+- Strong market interest
+- Clear trading signals
+
+Return ONLY a JSON array of ticker symbols, nothing else.
+Example: ["AAPL", "MSFT", "TSLA"]"""
+
+        from llm_providers import Message
+        response = self._complete_with_optional_model(
+            provider,
+            messages=[Message(role='user', content=prompt)],
+            model=model
+        )
+        symbols = self._parse_discovery_symbols(response.content, count)
+        if symbols:
+            self._mark_provider_success(provider_name)
+        else:
+            self._mark_provider_failure(provider_name, ValueError('No parseable symbols'))
+        return symbols
+
+    def _parse_discovery_symbols(self, content: str, count: int) -> list:
+        """Parse provider output into a deduplicated ticker list."""
+        if not content:
             return []
 
-        except Exception as e:
-            logger.error(f'Error discovering stocks: {str(e)}')
-            return []
+        text = content.strip()
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s*```$', '', text)
+
+        def normalize(items):
+            out = []
+            seen = set()
+            for item in items:
+                if not isinstance(item, str):
+                    continue
+                symbol = item.strip().upper()
+                if not re.fullmatch(r'[A-Z]{1,6}', symbol):
+                    continue
+                if symbol in seen:
+                    continue
+                seen.add(symbol)
+                out.append(symbol)
+                if len(out) >= count:
+                    break
+            return out
+
+        # 1) Strict JSON parse
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                result = normalize(parsed)
+                if result:
+                    return result
+            if isinstance(parsed, dict):
+                for key in ('symbols', 'tickers', 'stocks'):
+                    if isinstance(parsed.get(key), list):
+                        result = normalize(parsed[key])
+                        if result:
+                            return result
+        except Exception:
+            pass
+
+        # 2) Extract first JSON array substring from a verbose response
+        array_match = re.search(r'\[[\s\S]*?\]', text)
+        if array_match:
+            try:
+                parsed = json.loads(array_match.group(0))
+                if isinstance(parsed, list):
+                    result = normalize(parsed)
+                    if result:
+                        return result
+            except Exception:
+                pass
+
+        # 3) Fallback: find ticker-like tokens in plain text
+        token_matches = re.findall(r'\b[A-Z]{1,6}\b', text.upper())
+        result = normalize(token_matches)
+        return result
 
     def generate_prediction(self, symbol: str, stock_data: Dict, provider_name: Optional[str] = None) -> Optional[Dict]:
         """
         Generate prediction for a stock using a specific provider or the default 'prediction' role.
         """
-        # List of providers to try if specific one fails
-        fallback_chain = [provider_name] if provider_name else []
-        fallback_chain.extend(['xai', 'mistral', 'gemini'])
-        # Remove duplicates while preserving order
-        fallback_chain = list(dict.fromkeys([p for p in fallback_chain if p]))
+        # For explicit multi-analyst roles, do not silently substitute a different provider.
+        # This preserves role diversity (e.g., Anthropic, xAI, Mistral, Perplexity).
+        if provider_name:
+            fallback_chain = [provider_name]
+        else:
+            fallback_chain = [self.config['PROVIDERS'].get('prediction', 'anthropic'), 'xai', 'mistral', 'gemini']
+            # Remove duplicates while preserving order
+            fallback_chain = list(dict.fromkeys([p for p in fallback_chain if p]))
 
         for p_name in fallback_chain:
             try:
@@ -235,7 +512,8 @@ Return your response as JSON:
 }}"""
 
                 from llm_providers import Message
-                response = target_provider.complete(
+                response = self._complete_with_optional_model(
+                    target_provider,
                     messages=[Message(role='user', content=prompt)],
                     model=model
                 )
@@ -247,6 +525,7 @@ Return your response as JSON:
                     content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
                 
                 prediction = json.loads(content)
+                self._mark_provider_success(p_name)
 
                 return {
                     'provider': p_name,
@@ -258,6 +537,7 @@ Return your response as JSON:
 
             except Exception as e:
                 logger.warning(f'Prediction failed with {p_name} for {symbol}: {e}')
+                self._mark_provider_failure(p_name, e)
                 continue
         
         logger.error(f'All prediction providers failed for {symbol}')
@@ -296,7 +576,8 @@ Consider:
 Return ONLY a number between 0.0 and 1.0, nothing else."""
 
             from llm_providers import Message
-            response = provider.complete(
+            response = self._complete_with_optional_model(
+                provider,
                 messages=[Message(role='user', content=prompt)],
                 model=model
             )
