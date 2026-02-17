@@ -150,9 +150,11 @@ class ForesightDashboard {
       <p style="margin:.25rem 0 0;color:var(--text-muted);font-family:var(--font-data);font-size:.7rem;">Started ${started}</p>
     `;
 
-    // Sync button state
+    // Sync button state and phase display
     const running = status === 'running' || status === 'active';
     this.setCycleButtonState(running);
+    if (running && window.setPhase) window.setPhase('analysis'); // best guess mid-cycle
+    if (!running && window.resetPhases) window.resetPhases();
   }
 
   async loadStats() {
@@ -198,16 +200,19 @@ class ForesightDashboard {
         this.detail.update(data);
       }
 
-      // Open detail panel
+      // Open panel immediately with loading skeleton (don't wait for fetch)
       const panel = document.getElementById('stock-detail');
       const backdrop = document.getElementById('detail-backdrop');
       if (panel) {
+        const body = document.getElementById('detail-body');
+        if (body) body.innerHTML = '<div class="loading-skeleton"></div>';
         panel.setAttribute('aria-hidden', 'false');
         panel.focus();
       }
       if (backdrop) {
         backdrop.style.display = 'block';
-        requestAnimationFrame(() => backdrop.classList.add('visible'));
+        backdrop.offsetHeight; // force reflow for CSS transition
+        backdrop.classList.add('visible');
       }
 
       if (this.grid) {
@@ -376,9 +381,10 @@ class ForesightDashboard {
       ticker.dataset.init = 'true';
     }
 
-    // Track items in an array so we can rebuild the doubled content
+    // Track items in an array so we can rebuild the doubled content (capped at 40)
     if (!this._tickerItems) this._tickerItems = [];
     this._tickerItems.push(`${text}   `);
+    if (this._tickerItems.length > 40) this._tickerItems.shift();
 
     // The -50% translateX animation requires content doubled inside the container
     // for a seamless infinite scroll loop (second half is the invisible reset point)
@@ -494,8 +500,9 @@ class ForesightDashboard {
         if (this.detail) this.detail.showEmpty();
       }
 
-      // R to refresh
-      if (e.key === 'r' || e.key === 'R') {
+      // R to refresh (not in inputs)
+      const tag = e.target.tagName;
+      if ((e.key === 'r' || e.key === 'R') && tag !== 'INPUT' && tag !== 'TEXTAREA' && !e.target.isContentEditable) {
         this.loadCurrentCycle();
         this.loadStats();
         this.announce('Dashboard refreshed');
