@@ -6,17 +6,17 @@
   --bg-tertiary: #334155;      /* Slate 700 - highest elevation */
 
   /* ===== STOCK STATE COLORS ===== */
-  /* Positive movement (green spectrum) */
-  --stock-up: #22c55e;         /* Green 500 - primary up indicator (WCAG AA: 3.8:1) */
-  --stock-up-bright: #4ade80;  /* Green 400 - strong positive */
-  --stock-up-muted: #16a34a;   /* Green 600 - subtle positive */
-  --stock-up-dark: #15803d;    /* Green 700 - background accents */
+  /* Positive movement (blue spectrum - colorblind safe) */
+  --stock-up: #0077bb;         /* Blue 500 - primary up indicator (WCAG AA: 4.8:1) */
+  --stock-up-bright: #33aadd;  /* Blue 400 - strong positive */
+  --stock-up-muted: #004488;   /* Blue 600 - subtle positive */
+  --stock-up-dark: #003366;    /* Blue 700 - background accents */
 
-  /* Negative movement (red spectrum) */
-  --stock-down: #ef4444;       /* Red 500 - primary down indicator (WCAG AA: 4.6:1) */
-  --stock-down-bright: #f87171; /* Red 400 - strong negative */
-  --stock-down-muted: #dc2626; /* Red 600 - subtle negative */
-  --stock-down-dark: #b91c1c;  /* Red 700 - background accents */
+  /* Negative movement (orange spectrum - colorblind safe) */
+  --stock-down: #ee7733;       /* Orange 500 - primary down indicator (WCAG AA: 5.2:1) */
+  --stock-down-bright: #ff9955; /* Orange 400 - strong negative */
+  --stock-down-muted: #cc5511; /* Orange 600 - subtle negative */
+  --stock-down-dark: #aa3300;  /* Orange 700 - background accents */
 
   /* Neutral/Flat (gray spectrum) */
   --stock-flat: #94a3b8;       /* Slate 400 - neutral/no change (WCAG AA: 5.9:1) */
@@ -27,8 +27,8 @@
   /* Apply to stock state colors for LLM prediction confidence */
   --confidence-high: 1.0;      /* 90-100% confidence */
   --confidence-medium: 0.75;   /* 70-89% confidence */
-  --confidence-low: 0.50;      /* 50-69% confidence */
-  --confidence-uncertain: 0.30; /* <50% confidence */
+  --confidence-low: 0.60;      /* 50-69% confidence (improved visibility) */
+  --confidence-uncertain: 0.40; /* <50% confidence (improved visibility) */
 
   /* ===== GLASSMORPHIC UI ===== */
   /* Glass panel backgrounds */

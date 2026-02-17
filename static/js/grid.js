@@ -14,8 +14,8 @@ class StockGrid {
     };
 
     this.colors = {
-      up: '#22c55e',
-      down: '#ef4444',
+      up: '#0077bb',     // Blue (colorblind safe)
+      down: '#ee7733',   // Orange (colorblind safe)
       flat: '#6b7280',
       background: '#1e293b',
       border: '#334155',
@@ -119,7 +119,8 @@ class StockGrid {
     enter
       .append('path')
       .attr('class', 'prediction-arrow')
-      .attr('transform', `translate(${tileSize - 15}, 15)`);
+      .attr('transform', `translate(${tileSize - 15}, 15)`)
+      .attr('pointer-events', 'none');
 
     // Accuracy bar background
     enter
