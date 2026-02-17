@@ -116,7 +116,7 @@ html {
 body {
   background-color: var(--bg-primary);
   background-image:
-    radial-gradient(rgba(200, 149, 42, 0.015) 1px, transparent 1px);
+    radial-gradient(rgba(200, 149, 42, 0.025) 1px, transparent 1px);
   background-size: 28px 28px;
   color: var(--text-primary);
   font-family: var(--font-data);
@@ -269,7 +269,7 @@ body {
 }
 
 .intel-label {
-  font-family: var(--font-data);
+  font-family: var(--font-label);
   font-size: 0.6rem;
   font-weight: 400;
   letter-spacing: 0.18em;
@@ -324,7 +324,7 @@ body {
 .phase-steps {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   margin-bottom: 1rem;
 }
 

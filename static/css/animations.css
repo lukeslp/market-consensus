@@ -127,10 +127,8 @@
 }
 
 /* ─── GPU hints ──────────────────────────── */
-.detail-panel,
-.btn-primary,
-.btn-secondary,
-.panel {
+/* Only promote the element that actually animates transform */
+.detail-panel {
   transform: translateZ(0);
   backface-visibility: hidden;
 }
