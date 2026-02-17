@@ -54,33 +54,19 @@ class PredictionService:
     def debate_and_vote(self, symbol: str, stock_data: Dict, analyst_predictions: list) -> Optional[Dict]:
         """
         Have a lead agent synthesize multiple predictions into a final consensus
-
-        Args:
-            symbol: Stock symbol
-            stock_data: Technical data
-            analyst_predictions: List of individual analyses
-
-        Returns:
-            Consensus prediction dict
         """
-        if 'synthesis' not in self.providers:
-            logger.error('Synthesis provider not configured')
-            return None
+        # Try multiple potential synthesis providers in order of preference
+        synthesis_providers = ['gemini', 'xai', 'mistral']
+        
+        # Format predictions for the prompt
+        debate_context = ""
+        for i, pred in enumerate(analyst_predictions):
+            debate_context += f"Analyst {i+1} ({pred['provider']}):\n"
+            debate_context += f"Direction: {pred['prediction']}\n"
+            debate_context += f"Confidence: {pred['confidence']}\n"
+            debate_context += f"Reasoning: {pred['reasoning']}\n\n"
 
-        try:
-            provider = self.providers['synthesis']
-            provider_name = self.config['PROVIDERS']['synthesis']
-            model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
-            
-            # Format predictions for the prompt
-            debate_context = ""
-            for i, pred in enumerate(analyst_predictions):
-                debate_context += f"Analyst {i+1} ({pred['provider']}):\n"
-                debate_context += f"Direction: {pred['prediction']}\n"
-                debate_context += f"Confidence: {pred['confidence']}\n"
-                debate_context += f"Reasoning: {pred['reasoning']}\n\n"
-
-            prompt = f"""You are the Head of Research at a top-tier hedge fund. 
+        prompt = f"""You are the Head of Research at a top-tier hedge fund. 
 Your analysts have provided conflicting technical reports on {symbol}.
 
 Symbol: {symbol}
@@ -101,33 +87,50 @@ Return your final decision as JSON:
     "synthesis_reasoning": "A brief summary of the debate and why this conclusion was reached."
 }}"""
 
-            from llm_providers import Message
-            response = provider.complete(
-                messages=[Message(role='user', content=prompt)],
-                model=model
-            )
+        for p_name in synthesis_providers:
+            try:
+                # Get the provider instance (either from our initialized ones or factory)
+                provider = None
+                for role, p in self.providers.items():
+                    if self.config['PROVIDERS'].get(role) == p_name:
+                        provider = p
+                        break
+                
+                if not provider:
+                    provider = ProviderFactory.get_provider(p_name)
+                
+                model = self.config.get('MODEL_OVERRIDES', {}).get(p_name)
+                
+                from llm_providers import Message
+                response = provider.complete(
+                    messages=[Message(role='user', content=prompt)],
+                    model=model
+                )
 
-            import json
-            import re
-            
-            # Clean response if it contains markdown code blocks
-            content = response.content.strip()
-            if content.startswith('```'):
-                content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
-            
-            result = json.loads(content)
+                import json
+                import re
+                
+                # Clean response
+                content = response.content.strip()
+                if content.startswith('```'):
+                    content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
+                
+                result = json.loads(content)
 
-            return {
-                'provider': self.config['PROVIDERS']['synthesis'],
-                'model': getattr(provider, 'model', 'unknown'),
-                'prediction': str(result.get('consensus_direction', 'NEUTRAL')).lower(),
-                'confidence': result.get('consensus_confidence', 0.5),
-                'reasoning': result.get('synthesis_reasoning', 'No synthesis reasoning provided')
-            }
+                return {
+                    'provider': p_name,
+                    'model': getattr(provider, 'model', 'unknown'),
+                    'prediction': str(result.get('consensus_direction', 'NEUTRAL')).lower(),
+                    'confidence': result.get('consensus_confidence', 0.5),
+                    'reasoning': result.get('synthesis_reasoning', 'No synthesis reasoning provided')
+                }
 
-        except Exception as e:
-            logger.error(f'Error in debate/vote for {symbol}: {str(e)}')
-            return None
+            except Exception as e:
+                logger.warning(f'Synthesis failed with {p_name}: {e}')
+                continue
+        
+        logger.error(f'All synthesis providers failed for {symbol}')
+        return None
 
     def discover_stocks(self, count: int = 10) -> list:
         """
