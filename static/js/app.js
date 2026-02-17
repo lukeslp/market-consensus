@@ -108,6 +108,14 @@ class ForesightDashboard {
 
       if (data.cycle) {
         this.currentCycle = data.cycle;
+
+        // Clear empty-state overlay if present
+        const overlay = document.querySelector('#stock-grid .empty-state');
+        if (overlay) overlay.remove();
+
+        // Update cycle info in sidebar
+        this.updateCycleInfo(data.cycle);
+
         // API returns predictions as separate top-level field, not in cycle.stocks
         this.updateGrid(data.predictions || []);
       } else {
@@ -118,6 +126,25 @@ class ForesightDashboard {
       console.error('Failed to load current cycle:', error);
       this.showError('Failed to load prediction data');
     }
+  }
+
+  updateCycleInfo(cycle) {
+    const infoEl = document.getElementById('current-cycle-info');
+    if (!infoEl) return;
+
+    const started = cycle.started_at
+      ? new Date(cycle.started_at).toLocaleTimeString()
+      : '—';
+    const status = cycle.status || 'unknown';
+
+    infoEl.innerHTML = `
+      <p class="cycle-status">Cycle #${cycle.id} &mdash; <span style="color:var(--accent-primary);text-transform:uppercase;font-size:.7rem;letter-spacing:.1em;">${status}</span></p>
+      <p style="margin:.25rem 0 0;color:var(--text-muted);font-family:var(--font-data);font-size:.7rem;">Started ${started}</p>
+    `;
+
+    // Sync button state
+    const running = status === 'running' || status === 'active';
+    this.setCycleButtonState(running);
   }
 
   async loadStats() {
@@ -407,21 +434,28 @@ class ForesightDashboard {
   }
 
   showEmptyState() {
+    // Don't replace the D3 container; append a floating message inside it
     const gridEl = document.querySelector('#stock-grid');
-    if (gridEl) {
-      gridEl.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 400px; gap: 20px;">
-          <div class="loading-spinner" style="width: 40px; height: 40px; border: 3px solid var(--glass-border); border-top: 3px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-          <h2 style="margin: 0; color: var(--text-primary);">Waiting for Predictions</h2>
-          <p style="margin: 0; color: var(--text-secondary); text-align: center; max-width: 300px;">
-            The prediction engine is running its first cycle. This typically takes 30-60 seconds.
-          </p>
-          <p style="margin: 0; color: var(--text-secondary); font-size: 0.9em;">
-            Or click "Start New Cycle" to trigger immediately
-          </p>
-        </div>
-      `;
-    }
+    if (!gridEl) return;
+
+    const existing = gridEl.querySelector('.empty-state');
+    if (existing) return; // Already shown
+
+    const msg = document.createElement('div');
+    msg.className = 'empty-state';
+    msg.style.cssText = [
+      'position:absolute', 'inset:0', 'display:flex', 'flex-direction:column',
+      'align-items:center', 'justify-content:center', 'gap:1rem',
+      'pointer-events:none'
+    ].join(';');
+    msg.innerHTML = `
+      <div class="loading-spinner" style="width:36px;height:36px;border:2px solid var(--glass-border);border-top:2px solid var(--accent-primary);border-radius:50%;"></div>
+      <p style="margin:0;color:var(--text-primary);font-family:var(--font-display);letter-spacing:.08em;">Awaiting Oracle</p>
+      <p style="margin:0;color:var(--text-muted);font-family:var(--font-data);font-size:.75rem;">Run Cycle to begin</p>
+    `;
+    // Make container relative so absolute child positions correctly
+    gridEl.style.position = 'relative';
+    gridEl.appendChild(msg);
   }
 
   setupKeyboardNav() {
