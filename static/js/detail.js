@@ -88,7 +88,9 @@ class StockDetail {
   }
 
   update(stockData) {
-    if (!stockData || !stockData.history || stockData.history.length === 0) {
+    // API returns price_history (not history)
+    const history = stockData && (stockData.price_history || stockData.history);
+    if (!history || history.length === 0) {
       this.showEmpty();
       return;
     }
@@ -98,28 +100,28 @@ class StockDetail {
     const chartWidth = width - margin.left - margin.right;
     const chartHeight = height - margin.top - margin.bottom;
 
-    // Parse dates
-    const parseDate = d3.timeParse('%Y-%m-%d');
-    stockData.history.forEach(d => {
-      d.date = parseDate(d.date);
+    // Parse timestamps — price records use `timestamp`, not `date`
+    history.forEach(d => {
+      d.date = new Date(d.timestamp || d.date);
       d.price = +d.price;
     });
 
     if (stockData.predictions) {
       stockData.predictions.forEach(d => {
-        d.date = parseDate(d.date);
+        // Prediction records use `prediction_time`, not `date`
+        d.date = new Date(d.prediction_time || d.date);
         d.confidence = +d.confidence;
       });
     }
 
     // Scales
-    const xExtent = d3.extent(stockData.history, d => d.date);
+    const xExtent = d3.extent(history, d => d.date);
     this.scales.x = d3.scaleTime()
       .domain(xExtent)
       .range([0, chartWidth])
       .nice();
 
-    const priceExtent = d3.extent(stockData.history, d => d.price);
+    const priceExtent = d3.extent(history, d => d.price);
     const padding = (priceExtent[1] - priceExtent[0]) * 0.1;
     this.scales.y = d3.scaleLinear()
       .domain([priceExtent[0] - padding, priceExtent[1] + padding])
@@ -180,7 +182,7 @@ class StockDetail {
 
     const areaPath = this.chart.select('.price-area')
       .selectAll('path')
-      .data([stockData.history]);
+      .data([history]);
 
     areaPath.enter()
       .append('path')
@@ -220,7 +222,7 @@ class StockDetail {
 
     const linePath = this.chart.select('.price-line')
       .selectAll('path')
-      .data([stockData.history]);
+      .data([history]);
 
     linePath.enter()
       .append('path')
@@ -238,7 +240,7 @@ class StockDetail {
     }
 
     // Interactive overlay
-    this.addInteractivity(stockData.history, chartWidth, chartHeight);
+    this.addInteractivity(history, chartWidth, chartHeight);
   }
 
   drawPredictions(predictions, chartWidth, chartHeight) {
@@ -256,8 +258,8 @@ class StockDetail {
     bandEnter.append('rect')
       .attr('class', 'band-bg')
       .attr('fill', d => {
-        if (d.prediction === 'up') return this.colors.up;
-        if (d.prediction === 'down') return this.colors.down;
+        if (d.predicted_direction === 'up') return this.colors.up;
+        if (d.predicted_direction === 'down') return this.colors.down;
         return this.colors.flat;
       })
       .attr('opacity', d => this.getConfidenceOpacity(d.confidence));
@@ -307,8 +309,8 @@ class StockDetail {
       .attr('class', 'visual-marker')
       .attr('r', 6)
       .attr('fill', d => {
-        if (d.prediction === 'up') return this.colors.up;
-        if (d.prediction === 'down') return this.colors.down;
+        if (d.predicted_direction === 'up') return this.colors.up;
+        if (d.predicted_direction === 'down') return this.colors.down;
         return this.colors.flat;
       })
       .attr('stroke', '#0f172a')
