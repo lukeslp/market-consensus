@@ -51,6 +51,10 @@ class PredictionWorker:
         self.thread.start()
         logger.info('Prediction worker started')
 
+    def is_alive(self) -> bool:
+        """Check if the worker thread is running"""
+        return self.running and self.thread and self.thread.is_alive()
+
     def stop(self):
         """Stop the background worker gracefully"""
         self.running = False

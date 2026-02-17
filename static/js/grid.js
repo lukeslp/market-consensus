@@ -13,14 +13,17 @@ class StockGrid {
       ...options
     };
 
+    // Read from CSS variables to match the active design system
+    const cs = getComputedStyle(document.documentElement);
     this.colors = {
-      up: '#0077bb',     // Blue (colorblind safe)
-      down: '#ee7733',   // Orange (colorblind safe)
-      flat: '#6b7280',
-      background: '#1e293b',
-      border: '#334155',
-      text: '#e2e8f0',
-      textMuted: '#94a3b8'
+      up:        cs.getPropertyValue('--stock-up').trim()        || '#1aad6a',
+      down:      cs.getPropertyValue('--stock-down').trim()      || '#c93636',
+      flat:      cs.getPropertyValue('--stock-flat').trim()      || '#5a5662',
+      background:cs.getPropertyValue('--bg-secondary').trim()    || '#111111',
+      border:    cs.getPropertyValue('--glass-border').trim()    || 'rgba(255,255,255,0.07)',
+      text:      cs.getPropertyValue('--text-primary').trim()    || '#e6dcc8',
+      textMuted: cs.getPropertyValue('--text-muted').trim()      || '#5a5458',
+      accent:    cs.getPropertyValue('--accent-primary').trim()  || '#c8952a'
     };
 
     this.svg = null;
@@ -69,20 +72,31 @@ class StockGrid {
       .attr('class', 'tile-bg')
       .attr('width', tileSize)
       .attr('height', tileSize)
-      .attr('rx', 8)
+      .attr('rx', 3)
       .attr('fill', this.colors.background)
       .attr('stroke', this.colors.border)
       .attr('stroke-width', 1);
 
-    // Symbol text
+    // Left confidence stripe — width 0→5px based on confidence, color by direction
+    enter
+      .append('rect')
+      .attr('class', 'confidence-stripe')
+      .attr('x', 0)
+      .attr('y', 2)
+      .attr('width', 0)
+      .attr('height', tileSize - 4)
+      .attr('rx', 1);
+
+    // Symbol text — monospace, cream, left-aligned
     enter
       .append('text')
       .attr('class', 'symbol')
-      .attr('x', tileSize / 2)
-      .attr('y', 30)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', 18)
+      .attr('x', 10)
+      .attr('y', 28)
+      .attr('text-anchor', 'start')
+      .attr('font-size', 16)
       .attr('font-weight', 600)
+      .attr('font-family', "'JetBrains Mono', monospace")
       .attr('fill', this.colors.text)
       .text(d => d.symbol);
 
