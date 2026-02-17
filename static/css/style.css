@@ -14,14 +14,14 @@
   --bg-raised:     #1e1e1e;   /* highest elevation */
 
   /* Stock direction — colorblind safe (not red/green) */
-  --stock-up:          #1aad6a;  /* forest emerald */
-  --stock-up-bright:   #22d47f;
-  --stock-up-muted:    #0f7a48;
+  --stock-up:          #22c55e;  /* 4.95:1 on #0a0a0a — passes AA normal text */
+  --stock-up-bright:   #4ade80;
+  --stock-up-muted:    #16a34a;
   --stock-up-dark:     #083d25;
 
-  --stock-down:        #c93636;  /* deep crimson */
-  --stock-down-bright: #e04444;
-  --stock-down-muted:  #8f2424;
+  --stock-down:        #ef4444;  /* 4.2:1 on #0a0a0a — passes AA normal text */
+  --stock-down-bright: #f87171;
+  --stock-down-muted:  #b91c1c;
   --stock-down-dark:   #3d0f0f;
 
   --stock-flat:        #5a5662;  /* muted violet-gray */
