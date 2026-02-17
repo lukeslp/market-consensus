@@ -232,7 +232,7 @@ class ForesightDashboard {
       this.eventSource.close();
     }
 
-    this.eventSource = new EventSource('/api/stream');
+    this.eventSource = new EventSource(`${API_ROOT}api/stream`);
 
     this.eventSource.onopen = () => {
       console.log('SSE connection established');
