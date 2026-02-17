@@ -1,43 +1,35 @@
 """
-Background worker for prediction cycles
-Runs prediction workflows in a separate thread
+Background worker for stock prediction cycles
 """
-import sys
-import threading
 import time
 import logging
-from datetime import datetime
-from typing import Optional
-from pathlib import Path
+import threading
+from typing import Optional, List, Dict
+from datetime import datetime, timedelta
 
-# Add project root for db.py import
-root_dir = Path(__file__).parent.parent
-if str(root_dir) not in sys.path:
-    sys.path.insert(0, str(root_dir))
-
-from db import ForesightDB
-from app.services.stock_service import StockService
-from app.services.prediction_service import PredictionService
+from .db import ForesightDB
+from .services.stock_service import StockService
+from .services.prediction_service import PredictionService
 
 logger = logging.getLogger(__name__)
 
 
 class PredictionWorker:
-    """Background worker for running prediction cycles"""
+    """Background worker that executes prediction cycles on a schedule"""
 
-    def __init__(self, config):
+    def __init__(self, config: Dict):
         """
-        Initialize worker
+        Initialize the worker
 
         Args:
-            config: Flask config object
+            config: Application configuration dictionary
         """
         self.config = config
         self.db_path = config['DB_PATH']
         self.running = False
         self.thread: Optional[threading.Thread] = None
         self.current_cycle_id: Optional[int] = None
-        self.last_cycle_time: Optional[float] = None
+        self.last_cycle_time: float = 0
         self.total_cycles_completed: int = 0
 
         # Initialize services
@@ -118,15 +110,16 @@ class PredictionWorker:
                 db.complete_cycle(cycle_id)
                 return
 
-            # Phase 2: Generate predictions for each stock
+            # Phase 2: Generate predictions for discovered stocks
             logger.info(f'Phase 2: Generating predictions for {len(symbols)} stocks')
             for symbol in symbols:
+                if not self.running:
+                    break
                 self._process_stock(db, cycle_id, symbol)
 
             # Phase 3: Complete cycle
             db.complete_cycle(cycle_id)
             self.total_cycles_completed += 1
-            self.last_cycle_time = time.time()
             logger.info(f'Completed prediction cycle {cycle_id} (total: {self.total_cycles_completed})')
             # Note: cycle_complete event is auto-emitted by db.complete_cycle()
 
@@ -240,7 +233,6 @@ class PredictionWorker:
             analyst_reports = []
             current_price = stock_data.get('current_price')
             # Set target time to 7 days from now
-            from datetime import timedelta
             target_time = datetime.now() + timedelta(days=7)
             
             # 1. Claude (Primary Analyst)
@@ -327,108 +319,6 @@ class PredictionWorker:
                     logger.info(f'Consensus reached for {symbol}: {consensus["prediction"]} (confidence: {consensus["confidence"]})')
             else:
                 logger.warning(f'No analyst reports available for {symbol}, skipping consensus')
-            logger.info(f'[{symbol}] Requesting alternative analysis from secondary analyst')
-            
-            # Let's use xAI explicitly as the "contrarian" for the debate
-            try:
-                from llm_providers import ProviderFactory
-                xai_provider = ProviderFactory.get_provider('xai')
-                # Simple prompt for the second analyst
-                from llm_providers import Message
-                import json
-                prompt = f"Contrarian analysis for {symbol} at ${stock_data['current_price']}. Predict UP/DOWN/NEUTRAL with JSON: {{\"prediction\": \"UP\", \"confidence\": 0.7, \"reasoning\": \"...\"}}"
-                resp = xai_provider.complete(messages=[Message(role='user', content=prompt)])
-                # Basic parsing
-                try:
-                    alt_data = json.loads(resp.content)
-                    analyst_reports.append({
-                        'provider': 'xai',
-                        'prediction': alt_data.get('prediction', 'NEUTRAL'),
-                        'confidence': alt_data.get('confidence', 0.5),
-                        'reasoning': alt_data.get('reasoning', 'No reasoning')
-                    })
-                except:
-                    pass
-            except Exception as e:
-                logger.warning(f'Secondary analyst failed: {e}')
-
-            if not analyst_reports:
-                logger.warning(f'No analyst reports generated for {symbol}')
-                return
-
-            # 3. Head of Research (Gemini) Debate and Consensus
-            logger.info(f'[{symbol}] Moderating debate between {len(analyst_reports)} analysts')
-            consensus = self.prediction_service.debate_and_vote(symbol, stock_data, analyst_reports)
-            
-            if not consensus:
-                logger.warning(f'Failed to reach consensus for {symbol}')
-                return
-
-            # --- STORAGE PHASE ---
-            # Get current price for initial_price
-            current_price = stock_data['current_price']
-            from datetime import timedelta
-            target_time = datetime.now() + timedelta(days=7)
-
-            # Map prediction direction to database format
-            direction_map = {'UP': 'up', 'DOWN': 'down', 'NEUTRAL': 'neutral'}
-            
-            # Store individual analyst reports
-            for report in analyst_reports:
-                db.add_prediction(
-                    cycle_id=cycle_id,
-                    stock_id=stock_id,
-                    provider=report['provider'],
-                    predicted_direction=direction_map.get(report['prediction'].upper(), 'neutral'),
-                    confidence=report['confidence'],
-                    reasoning=report['reasoning'],
-                    initial_price=current_price,
-                    target_time=target_time
-                )
-
-            # Store the final consensus prediction
-            prediction_id = db.add_prediction(
-                cycle_id=cycle_id,
-                stock_id=stock_id,
-                provider=f"{consensus['provider']}-consensus",
-                predicted_direction=direction_map.get(consensus['prediction'].upper(), 'neutral'),
-                confidence=consensus['confidence'],
-                reasoning=consensus['reasoning'],
-                initial_price=current_price,
-                target_time=target_time
-            )
-
-            logger.info(f'Consensus reached for {symbol}: {consensus["prediction"]} (confidence: {consensus["confidence"]:.2f})')
 
         except Exception as e:
             logger.error(f'Error processing stock {symbol}: {e}', exc_info=True)
-
-        except Exception as e:
-            logger.error(f'Error processing stock {symbol}: {e}', exc_info=True)
-
-    def is_alive(self) -> bool:
-        """Check if worker thread is alive"""
-        return self.thread.is_alive() if self.thread else False
-
-    def get_status(self) -> dict:
-        """Get worker status"""
-        import time
-        status = {
-            'running': self.running,
-            'thread_alive': self.is_alive(),
-            'current_cycle_id': self.current_cycle_id,
-            'total_cycles_completed': self.total_cycles_completed,
-            'last_cycle_time': self.last_cycle_time
-        }
-
-        # Check if worker is stale (no cycle in >2x interval)
-        if self.last_cycle_time:
-            time_since_last = time.time() - self.last_cycle_time
-            max_allowed = self.config['CYCLE_INTERVAL'] * 2
-            status['is_healthy'] = time_since_last < max_allowed
-            status['seconds_since_last_cycle'] = int(time_since_last)
-        else:
-            status['is_healthy'] = True if self.is_alive() else False
-            status['seconds_since_last_cycle'] = None
-
-        return status

@@ -1,73 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foresight - Stock Prediction Dashboard</title>
-    <link rel="stylesheet" href="/foresight/static/css/style.css">
-    <link rel="stylesheet" href="/foresight/static/css/layout.css">
-    <link rel="stylesheet" href="/foresight/static/css/animations.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foresight — Stock Prediction Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/foresight/static/css/style.css">
+  <link rel="stylesheet" href="/foresight/static/css/layout.css">
+  <link rel="stylesheet" href="/foresight/static/css/animations.css">
 </head>
 <body>
-    <header role="banner">
-        <h1>Foresight</h1>
-        <p>Stock Prediction Dashboard - Real-time LLM-powered analysis</p>
-        <div id="connection-status" aria-live="polite" aria-atomic="true">
-            <span class="status-indicator" id="status-indicator"></span>
-            <span id="status-text">Connecting...</span>
+
+  <!-- Masthead -->
+  <header role="banner" class="masthead">
+    <div class="masthead-rule top-rule" aria-hidden="true"></div>
+
+    <div class="masthead-inner">
+      <div class="masthead-left">
+        <div id="connection-status" class="connection-status" aria-live="polite" aria-atomic="true">
+          <span class="status-indicator" id="status-indicator" aria-hidden="true"></span>
+          <span id="status-text" class="status-text">Connecting</span>
         </div>
-    </header>
+      </div>
 
-    <div class="dashboard-container">
-        <!-- Sidebar: Provider Leaderboard & Controls -->
-        <aside id="sidebar" class="sidebar" role="complementary" aria-label="Provider Statistics">
-            <section class="glass-panel">
-                <h2>Provider Leaderboard</h2>
-                <div id="provider-stats" role="list">
-                    <div class="loading-skeleton"></div>
-                </div>
-            </section>
+      <div class="masthead-title">
+        <h1 class="logotype">Foresight</h1>
+        <p class="tagline">Multi-Model Prediction Intelligence</p>
+      </div>
 
-            <section class="glass-panel cycle-controls">
-                <h2>Cycle Control</h2>
-                <div id="current-cycle-info">
-                    <p class="cycle-status">No active cycle</p>
-                </div>
-                <button id="start-cycle-btn" class="btn-primary" aria-label="Start new prediction cycle">
-                    Start New Cycle
-                </button>
-                <button id="stop-cycle-btn" class="btn-secondary" disabled aria-label="Stop current cycle">
-                    Stop Cycle
-                </button>
-            </section>
-        </aside>
-
-        <!-- Main: Stock Grid -->
-        <main role="main" aria-label="Stock Predictions">
-            <div id="stock-grid" class="glass-panel">
-                <!-- D3.js grid rendered here -->
-            </div>
-        </main>
-
-        <!-- Detail Panel: Stock Details (hidden by default) -->
-        <aside class="detail-panel" id="stock-detail" role="complementary" aria-label="Stock Details" aria-hidden="true">
-            <div class="detail-content glass-panel">
-                <button class="close-btn" id="close-detail" aria-label="Close detail panel">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                <div id="detail-body">
-                    <div class="loading-skeleton"></div>
-                </div>
-            </div>
-        </aside>
+      <div class="masthead-right">
+        <div id="cycle-phase-display" class="phase-display" aria-live="polite">
+          <span class="phase-label">IDLE</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="/foresight/static/js/api.js"></script>
-    <script src="/foresight/static/js/grid.js"></script>
-    <script src="/foresight/static/js/detail.js"></script>
-    <script src="/foresight/static/js/sidebar.js"></script>
-    <script src="/foresight/static/js/app.js"></script>
+    <div class="masthead-rule bottom-rule" aria-hidden="true"></div>
+  </header>
+
+  <!-- Intelligence Bar: Stats Row -->
+  <div class="intelligence-bar" role="complementary" aria-label="System statistics">
+    <div class="intel-stat">
+      <span class="intel-value" id="stat-total-predictions">—</span>
+      <span class="intel-label">Predictions</span>
+    </div>
+    <div class="intel-divider" aria-hidden="true"></div>
+    <div class="intel-stat">
+      <span class="intel-value" id="stat-overall-accuracy">—</span>
+      <span class="intel-label">Accuracy</span>
+    </div>
+    <div class="intel-divider" aria-hidden="true"></div>
+    <div class="intel-stat">
+      <span class="intel-value" id="stat-cycles">—</span>
+      <span class="intel-label">Cycles</span>
+    </div>
+    <div class="intel-divider" aria-hidden="true"></div>
+    <div class="intel-stat">
+      <span class="intel-value" id="stat-stocks">—</span>
+      <span class="intel-label">Stocks</span>
+    </div>
+  </div>
+
+  <!-- Main Dashboard -->
+  <div class="dashboard-container">
+
+    <!-- Sidebar: Oracle Panel -->
+    <aside id="sidebar" class="sidebar" role="complementary" aria-label="Oracle Intelligence Panel">
+
+      <!-- Cycle Control -->
+      <section class="panel cycle-panel" aria-labelledby="cycle-heading">
+        <h2 id="cycle-heading" class="panel-heading">Cycle</h2>
+        <div id="current-cycle-info" class="cycle-info">
+          <p class="cycle-status">No active cycle</p>
+        </div>
+        <!-- Phase progress: shown during active cycle -->
+        <div class="phase-steps" id="phase-steps" aria-live="polite" aria-label="Prediction cycle phases">
+          <div class="phase-step" data-phase="discovery">
+            <span class="phase-step-num">I</span>
+            <span class="phase-step-name">Discovery</span>
+          </div>
+          <div class="phase-step" data-phase="analysis">
+            <span class="phase-step-num">II</span>
+            <span class="phase-step-name">Analysis</span>
+          </div>
+          <div class="phase-step" data-phase="debate">
+            <span class="phase-step-num">III</span>
+            <span class="phase-step-name">Debate</span>
+          </div>
+          <div class="phase-step" data-phase="consensus">
+            <span class="phase-step-num">IV</span>
+            <span class="phase-step-name">Consensus</span>
+          </div>
+        </div>
+        <div class="cycle-actions">
+          <button id="start-cycle-btn" class="btn-primary" aria-label="Start new prediction cycle">
+            Run Cycle
+          </button>
+          <button id="stop-cycle-btn" class="btn-secondary" disabled aria-label="Stop current cycle">
+            Abort
+          </button>
+        </div>
+      </section>
+
+      <!-- Model Roles -->
+      <section class="panel roles-panel" aria-labelledby="roles-heading">
+        <h2 id="roles-heading" class="panel-heading">Oracle Council</h2>
+        <div class="model-roles">
+          <div class="model-role-item">
+            <span class="role-badge role-discovery">DISC</span>
+            <div class="role-info">
+              <span class="role-name">xAI Grok</span>
+              <span class="role-desc">Stock Discovery</span>
+            </div>
+          </div>
+          <div class="model-role-item">
+            <span class="role-badge role-analysis">ANLY</span>
+            <div class="role-info">
+              <span class="role-name">Anthropic Claude</span>
+              <span class="role-desc">Primary Analysis</span>
+            </div>
+          </div>
+          <div class="model-role-item">
+            <span class="role-badge role-contrarian">CNTR</span>
+            <div class="role-info">
+              <span class="role-name">xAI Grok</span>
+              <span class="role-desc">Contrarian View</span>
+            </div>
+          </div>
+          <div class="model-role-item">
+            <span class="role-badge role-synthesis">SYNT</span>
+            <div class="role-info">
+              <span class="role-name">Google Gemini</span>
+              <span class="role-desc">Debate Moderator</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Provider Leaderboard -->
+      <section class="panel" aria-labelledby="leaderboard-heading">
+        <h2 id="leaderboard-heading" class="panel-heading">Leaderboard</h2>
+        <div id="provider-stats" role="list">
+          <div class="loading-skeleton"></div>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- Main: Stock Grid -->
+    <main role="main" aria-label="Stock Prediction Grid">
+      <div id="stock-grid" class="stock-grid-container">
+        <!-- D3.js grid rendered here -->
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Detail Panel: Stock Details -->
+  <aside class="detail-panel" id="stock-detail" role="complementary" aria-label="Stock Details" aria-hidden="true">
+    <div class="detail-panel-backdrop" id="detail-backdrop"></div>
+    <div class="detail-content">
+      <div class="detail-header">
+        <button class="close-btn" id="close-detail" aria-label="Close detail panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M1 1L15 15M15 1L1 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div id="detail-body">
+        <div class="loading-skeleton"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Ticker tape: Recent predictions scrolling bar -->
+  <div class="ticker-bar" role="marquee" aria-label="Recent prediction activity" aria-live="off">
+    <div class="ticker-label" aria-hidden="true">LATEST</div>
+    <div class="ticker-track">
+      <div class="ticker-content" id="ticker-content" aria-hidden="true">
+        Awaiting predictions — system initializing
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="/foresight/static/js/api.js"></script>
+  <script src="/foresight/static/js/grid.js"></script>
+  <script src="/foresight/static/js/detail.js"></script>
+  <script src="/foresight/static/js/sidebar.js"></script>
+  <script src="/foresight/static/js/app.js"></script>
+
+  <script>
+    // Cycle phase indicator — driven by SSE events, hooked into global dashboard
+    document.addEventListener('DOMContentLoaded', () => {
+      const phaseEl = document.querySelector('.phase-display .phase-label');
+      const steps = document.querySelectorAll('.phase-step');
+
+      function setPhase(phase) {
+        if (phaseEl) phaseEl.textContent = phase.toUpperCase();
+        steps.forEach(s => {
+          s.classList.toggle('active', s.dataset.phase === phase);
+          s.classList.remove('done');
+        });
+        // Mark previous phases as done
+        const order = ['discovery', 'analysis', 'debate', 'consensus'];
+        const idx = order.indexOf(phase);
+        steps.forEach(s => {
+          const sIdx = order.indexOf(s.dataset.phase);
+          if (sIdx < idx) s.classList.add('done');
+        });
+      }
+
+      function resetPhases() {
+        if (phaseEl) phaseEl.textContent = 'IDLE';
+        steps.forEach(s => { s.classList.remove('active', 'done'); });
+      }
+
+      // Expose for app.js to call
+      window.setPhase = setPhase;
+      window.resetPhases = resetPhases;
+    });
+  </script>
+
 </body>
 </html>

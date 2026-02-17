@@ -197,10 +197,8 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
             provider_name: Specific provider name (e.g., 'anthropic', 'xai', 'mistral', 'perplexity')
                            If None, uses the default 'prediction' role from config.
         """
-        role = 'prediction'
         if provider_name:
             # Check if we have this provider initialized for any role, or get it from factory
-            # For simplicity, we'll try to get it from our initialized providers first
             target_provider = None
             for r, p in self.providers.items():
                 if self.config['PROVIDERS'].get(r) == provider_name:
