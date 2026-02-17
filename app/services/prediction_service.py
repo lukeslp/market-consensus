@@ -193,42 +193,30 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
     def generate_prediction(self, symbol: str, stock_data: Dict, provider_name: Optional[str] = None) -> Optional[Dict]:
         """
         Generate prediction for a stock using a specific provider or the default 'prediction' role.
-        
-        Args:
-            symbol: Stock symbol
-            stock_data: Technical data
-            provider_name: Specific provider name (e.g., 'anthropic', 'xai', 'mistral', 'perplexity')
-                           If None, uses the default 'prediction' role from config.
         """
-        if provider_name:
-            # Check if we have this provider initialized for any role, or get it from factory
-            target_provider = None
-            for r, p in self.providers.items():
-                if self.config['PROVIDERS'].get(r) == provider_name:
-                    target_provider = p
-                    break
-            
-            if not target_provider:
-                try:
-                    target_provider = ProviderFactory.get_provider(provider_name)
-                    # Set model from overrides if available
-                    model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
-                    if model:
-                        target_provider.model = model
-                except Exception as e:
-                    logger.error(f'Failed to get provider {provider_name}: {e}')
-                    return None
-        else:
-            if 'prediction' not in self.providers:
-                logger.error('Prediction provider not configured')
-                return None
-            target_provider = self.providers['prediction']
-            provider_name = self.config['PROVIDERS']['prediction']
+        # List of providers to try if specific one fails
+        fallback_chain = [provider_name] if provider_name else []
+        fallback_chain.extend(['xai', 'mistral', 'gemini'])
+        # Remove duplicates while preserving order
+        fallback_chain = list(dict.fromkeys([p for p in fallback_chain if p]))
 
-        try:
-            model = self.config.get('MODEL_OVERRIDES', {}).get(provider_name)
+        for p_name in fallback_chain:
+            try:
+                # Check if we have this provider initialized for any role
+                target_provider = None
+                for r, p in self.providers.items():
+                    if self.config['PROVIDERS'].get(r) == p_name:
+                        target_provider = p
+                        break
+                
+                if not target_provider:
+                    target_provider = ProviderFactory.get_provider(p_name)
+                
+                model = self.config.get('MODEL_OVERRIDES', {}).get(p_name)
+                if model:
+                    target_provider.model = model
 
-            prompt = f"""Analyze this stock and make a short-term prediction (1-7 days):
+                prompt = f"""Analyze this stock and make a short-term prediction (1-7 days):
 
 Symbol: {symbol}
 Current Price: ${stock_data.get('current_price', 'N/A')}
@@ -246,32 +234,34 @@ Return your response as JSON:
     "reasoning": "Your reasoning here"
 }}"""
 
-            from llm_providers import Message
-            response = target_provider.complete(
-                messages=[Message(role='user', content=prompt)],
-                model=model
-            )
+                from llm_providers import Message
+                response = target_provider.complete(
+                    messages=[Message(role='user', content=prompt)],
+                    model=model
+                )
 
-            # Parse JSON response (response is CompletionResponse object)
-            import json
-            import re
-            content = response.content.strip()
-            if content.startswith('```'):
-                content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
-            
-            prediction = json.loads(content)
+                import json
+                import re
+                content = response.content.strip()
+                if content.startswith('```'):
+                    content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
+                
+                prediction = json.loads(content)
 
-            return {
-                'provider': provider_name,
-                'model': model or getattr(target_provider, 'model', 'unknown'),
-                'prediction': str(prediction.get('prediction', 'NEUTRAL')).lower(),
-                'confidence': prediction.get('confidence', 0.5),
-                'reasoning': prediction.get('reasoning', 'No reasoning provided')
-            }
+                return {
+                    'provider': p_name,
+                    'model': model or getattr(target_provider, 'model', 'unknown'),
+                    'prediction': str(prediction.get('prediction', 'NEUTRAL')).lower(),
+                    'confidence': prediction.get('confidence', 0.5),
+                    'reasoning': prediction.get('reasoning', 'No reasoning provided')
+                }
 
-        except Exception as e:
-            logger.error(f'Error generating prediction for {symbol} using {provider_name}: {str(e)}')
-            return None
+            except Exception as e:
+                logger.warning(f'Prediction failed with {p_name} for {symbol}: {e}')
+                continue
+        
+        logger.error(f'All prediction providers failed for {symbol}')
+        return None
 
     def synthesize_confidence(self, predictions: list) -> Optional[float]:
         """
