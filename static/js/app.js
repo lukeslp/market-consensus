@@ -98,11 +98,13 @@ class ForesightDashboard {
       });
     }
 
-    // Sidebar
-    const sidebarContainer = d3.select('#sidebar');
+    // Sidebar — mount inside the leaderboard section, not the full sidebar
+    const sidebarContainer = d3.select('#provider-stats');
     if (!sidebarContainer.empty()) {
-      this.sidebar = new Sidebar('#sidebar', {
-        width: 300
+      // Clear the loading skeleton
+      sidebarContainer.html('');
+      this.sidebar = new Sidebar('#provider-stats', {
+        width: 240
       });
     }
   }
