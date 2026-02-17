@@ -334,6 +334,7 @@ class StockGrid {
   }
 
   highlightTile(symbol) {
+    if (!this.tiles) return;
     this.tiles
       .select('.tile-bg')
       .transition()

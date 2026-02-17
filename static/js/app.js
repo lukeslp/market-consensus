@@ -488,15 +488,10 @@ class ForesightDashboard {
 
   setupKeyboardNav() {
     document.addEventListener('keydown', (e) => {
-      // Escape to deselect
+      // Escape to close detail panel
       if (e.key === 'Escape' && this.selectedStock) {
-        this.selectedStock = null;
-        if (this.grid) {
-          this.grid.highlightTile(null);
-        }
-        if (this.detail) {
-          this.detail.showEmpty();
-        }
+        this.closeDetail();
+        if (this.detail) this.detail.showEmpty();
       }
 
       // R to refresh
@@ -506,6 +501,24 @@ class ForesightDashboard {
         this.announce('Dashboard refreshed');
       }
     });
+
+    // Close button
+    const closeBtn = document.getElementById('close-detail');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        this.closeDetail();
+        if (this.detail) this.detail.showEmpty();
+      });
+    }
+
+    // Backdrop click to close
+    const backdrop = document.getElementById('detail-backdrop');
+    if (backdrop) {
+      backdrop.addEventListener('click', () => {
+        this.closeDetail();
+        if (this.detail) this.detail.showEmpty();
+      });
+    }
   }
 
   announce(message) {

@@ -121,7 +121,7 @@
   to   { transform: scaleX(1); transform-origin: left; }
 }
 
-.accuracy-bar-fill {
+.accuracy-fill {
   animation: accuracy-fill-in 0.9s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
