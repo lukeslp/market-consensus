@@ -3,6 +3,12 @@
  * Integrates StockGrid, StockDetail, and Sidebar visualizations with SSE streaming
  */
 
+// Detect app root path so API calls work behind any URL prefix (e.g. /foresight/)
+const API_ROOT = (() => {
+  const p = window.location.pathname;
+  return p.endsWith('/') ? p : p.substring(0, p.lastIndexOf('/') + 1);
+})();
+
 class ForesightDashboard {
   constructor() {
     this.grid = null;
@@ -47,7 +53,7 @@ class ForesightDashboard {
         startBtn.disabled = true;
         if (stopBtn) stopBtn.disabled = false;
         try {
-          await fetch('/api/cycle/start', { method: 'POST' });
+          await fetch(`${API_ROOT}api/cycle/start', { method: 'POST' });
         } catch (e) {
           console.error('Failed to start cycle:', e);
           startBtn.disabled = false;
@@ -103,7 +109,7 @@ class ForesightDashboard {
 
   async loadCurrentCycle() {
     try {
-      const response = await fetch('/api/current');
+      const response = await fetch(`${API_ROOT}api/current');
       const data = await response.json();
 
       if (data.cycle) {
@@ -149,7 +155,7 @@ class ForesightDashboard {
 
   async loadStats() {
     try {
-      const response = await fetch('/api/stats');
+      const response = await fetch(`${API_ROOT}api/stats');
       const data = await response.json();
 
       if (this.sidebar) {
