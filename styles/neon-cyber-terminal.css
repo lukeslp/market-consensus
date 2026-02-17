@@ -1,0 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Orbitron:wght@400;700&display=swap');
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #0A0A0A;
+    color: #FFFFFF;
+    font-family: 'IBM Plex Mono', monospace;
+    overflow: hidden;
+}
+
+/* Main Dashboard Container */
+.dashboard {
+    display: grid;
+    grid-template-columns: 200px 1fr 300px;
+    grid-template-rows: 60px 1fr 40px;
+    height: 100vh;
+    background: radial-gradient(circle at 50% 50%, rgba(0, 255, 255, 0.05), transparent 50%);
+}
+
+/* Header with Cycle Controls */
+.header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+    padding: 0 20px;
+}
+
+.cycle-controls {
+    display: flex;
+    gap: 15px;
+}
+
+.cycle-button {
+    background: none;
+    border: 2px solid #00FFFF;
+    color: #00FFFF;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    padding: 8px 16px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.cycle-button::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 255, 255, 0.2);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.cycle-button:hover::after {
+    opacity: 1;
+}
+
+/* Sidebar: Provider Leaderboard */
+.leaderboard {
+    grid-column: 1;
+    grid-row: 2;
+    background: rgba(0, 0, 0, 0.7);
+    border-right: 1px solid rgba(0, 255, 255, 0.2);
+    padding: 20px 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.leaderboard-title {
+    font-family: 'Orbitron', sans-serif;
+    color: #00FFFF;
+    font-size: 16px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.provider-item {
+    font-size: 12px;
+    padding: 8px;
+    border-left: 3px solid transparent;
+    transition: border-color 0.3s;
+}
+
+.provider-item.active {
+    border-left-color: #00FFFF;
+}
+
+/* Main Content: Stock Tiles Grid */
+.stock-grid {
+    grid-column: 2;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.stock-tile {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    backdrop-filter: blur(5px);
+    padding: 15px;
+    border-radius: 6px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+
+.stock-tile.up {
+    border-color: #00FFFF;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.stock-tile.down {
+    border-color: #FF00FF;
+    box-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+}
+
+.stock-tile.neutral {
+    border-color: #66FF66;
+    box-shadow: 0 0 10px rgba(102, 255, 102, 0.5);
+}
+
+.stock-direction {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+.stock-confidence {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* Detail Panel */
+.detail-panel {
+    grid-column: 3;
+    grid-row: 2;
+    background: rgba(0, 0, 0, 0.8);
+    border-left: 1px solid rgba(0, 255, 255, 0.2);
+    padding: 20px;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: inset 0 0 20px rgba(0, 255, 255, 0.1);
+}
+
+.detail-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(transparent, transparent 4px, rgba(102, 255, 102, 0.03) 4px, rgba(102, 255, 102, 0.03) 5px);
+    pointer-events: none;
+}
+
+.detail-title {
+    font-family: 'Orbitron', sans-serif;
+    color: #00FFFF;
+    font-size: 18px;
+    margin-bottom: 15px;
+}
+
+/* Real-Time Updates Footer */
+.updates-footer {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    background: rgba(0, 0, 0, 0.9);
+    border-top: 1px solid rgba(0, 255, 255, 0.3);
+    padding: 10px 20px;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.update-stream {
+    display: flex;
+    animation: scroll 10s linear infinite;
+}
+
+@keyframes scroll {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+}
+
+/* Oracle Matrix Web Background (Placeholder for JS Animation) */
+.oracle-matrix-web {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    opacity: 0.3;
+    pointer-events: none;
+}
