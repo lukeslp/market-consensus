@@ -192,27 +192,27 @@ class ForesightDashboard {
   async selectStock(symbol) {
     this.selectedStock = symbol;
 
+    // Open panel immediately with a loading skeleton — don't wait for fetch
+    const panel = document.getElementById('stock-detail');
+    const backdrop = document.getElementById('detail-backdrop');
+    if (panel) {
+      const body = document.getElementById('detail-body');
+      if (body) body.innerHTML = '<div class="loading-skeleton"></div>';
+      panel.setAttribute('aria-hidden', 'false');
+      panel.focus();
+    }
+    if (backdrop) {
+      backdrop.style.display = 'block';
+      backdrop.offsetHeight; // force reflow for CSS transition
+      backdrop.classList.add('visible');
+    }
+
     try {
       const response = await fetch(`${API_ROOT}api/stock/${symbol}`);
       const data = await response.json();
 
       if (this.detail) {
         this.detail.update(data);
-      }
-
-      // Open panel immediately with loading skeleton (don't wait for fetch)
-      const panel = document.getElementById('stock-detail');
-      const backdrop = document.getElementById('detail-backdrop');
-      if (panel) {
-        const body = document.getElementById('detail-body');
-        if (body) body.innerHTML = '<div class="loading-skeleton"></div>';
-        panel.setAttribute('aria-hidden', 'false');
-        panel.focus();
-      }
-      if (backdrop) {
-        backdrop.style.display = 'block';
-        backdrop.offsetHeight; // force reflow for CSS transition
-        backdrop.classList.add('visible');
       }
 
       if (this.grid) {
@@ -292,21 +292,8 @@ class ForesightDashboard {
       }, 5000);
     };
 
-    // Listen for custom event types
-    this.eventSource.addEventListener('prediction', (event) => {
-      const data = JSON.parse(event.data);
-      this.handlePrediction(data);
-    });
-
-    this.eventSource.addEventListener('cycle_start', (event) => {
-      const data = JSON.parse(event.data);
-      this.handleCycleStart(data);
-    });
-
-    this.eventSource.addEventListener('cycle_complete', (event) => {
-      const data = JSON.parse(event.data);
-      this.handleCycleComplete(data);
-    });
+    // Backend emits plain `data:` events (no `event:` header),
+    // so all routing is handled by onmessage → handleStreamEvent()
   }
 
   handleStreamEvent(data) {
