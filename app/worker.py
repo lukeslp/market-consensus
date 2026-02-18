@@ -4,7 +4,7 @@ Background worker for stock prediction cycles
 import time
 import logging
 import threading
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -32,7 +32,21 @@ class PredictionWorker:
         self.current_cycle_id: Optional[int] = None
         self.last_cycle_time: float = 0
         self.total_cycles_completed: int = 0
-        self.last_premarket_cycle_date = None
+        self.next_scheduled_run: Optional[datetime] = None
+        self.next_scheduled_reason: Optional[str] = None
+
+        # Scheduling configuration
+        self.market_tz = ZoneInfo(config.get('MARKET_TIMEZONE', 'America/New_York'))
+        self.market_open_hour = int(config.get('MARKET_OPEN_HOUR', 9))
+        self.market_open_minute = int(config.get('MARKET_OPEN_MINUTE', 30))
+        self.market_close_hour = int(config.get('MARKET_CLOSE_HOUR', 16))
+        self.market_close_minute = int(config.get('MARKET_CLOSE_MINUTE', 0))
+        self.market_open_interval_seconds = max(60, int(config.get('MARKET_OPEN_INTERVAL_SECONDS', 1800)))
+        self.overnight_lookahead_hours = max(1, int(config.get('OVERNIGHT_LOOKAHEAD_HOURS', 18)))
+        self.schedule_poll_seconds = max(5, int(config.get('SCHEDULE_POLL_SECONDS', 20)))
+        self.overnight_check_times = self._parse_overnight_check_times(
+            config.get('OVERNIGHT_CHECK_TIMES', '20:00,06:00')
+        )
 
         # Initialize services
         self.stock_service = StockService()
@@ -72,78 +86,177 @@ class PredictionWorker:
             'current_cycle_id': self.current_cycle_id,
             'last_cycle_time': self.last_cycle_time,
             'total_cycles_completed': self.total_cycles_completed,
+            'next_scheduled_run': self.next_scheduled_run.isoformat() if self.next_scheduled_run else None,
+            'next_scheduled_reason': self.next_scheduled_reason,
         }
 
     def _run_worker(self):
-        """Main worker loop"""
-        cycle_interval = self.config['CYCLE_INTERVAL']
-        first_cycle = True
+        """Main worker loop with market-aware scheduling."""
+        now = self._et_now()
+        self.next_scheduled_run, self.next_scheduled_reason = self._next_scheduled_run(after_dt=now)
+        logger.info(
+            f'Worker schedule initialized: next run at {self.next_scheduled_run.isoformat()} '
+            f'({self.next_scheduled_reason})'
+        )
 
         while self.running:
             try:
-                # Ensure there is at least one cycle before US market open on weekdays.
-                self._ensure_premarket_cycle()
+                now = self._et_now()
+                if self.next_scheduled_run and now >= self.next_scheduled_run:
+                    logger.info(
+                        f'Scheduled cycle due at {self.next_scheduled_run.isoformat()} '
+                        f'({self.next_scheduled_reason}); executing now'
+                    )
+                    self._run_prediction_cycle()
+                    self.next_scheduled_run, self.next_scheduled_reason = self._next_scheduled_run(
+                        after_dt=self._et_now()
+                    )
+                    logger.info(
+                        f'Next scheduled cycle at {self.next_scheduled_run.isoformat()} '
+                        f'({self.next_scheduled_reason})'
+                    )
+                    continue
 
-                # Run a prediction cycle
-                self._run_prediction_cycle()
-
-                # For first cycle, short wait; then use normal interval
-                if first_cycle:
-                    logger.info('First cycle complete, entering normal schedule')
-                    first_cycle = False
-                    # Brief wait before next cycle
-                    time.sleep(5)
-                else:
-                    logger.info(f'Waiting {cycle_interval}s until next cycle')
-                    time.sleep(cycle_interval)
+                # Sleep in short increments so stop() remains responsive and schedule stays accurate.
+                sleep_seconds = self.schedule_poll_seconds
+                if self.next_scheduled_run:
+                    until_next = (self.next_scheduled_run - now).total_seconds()
+                    sleep_seconds = max(1, min(self.schedule_poll_seconds, until_next))
+                time.sleep(sleep_seconds)
 
             except Exception as e:
                 logger.error(f'Worker error: {e}', exc_info=True)
-                # Wait a bit before retrying
-                time.sleep(60)
+                time.sleep(min(60, self.schedule_poll_seconds))
 
-    def _ensure_premarket_cycle(self):
-        """
-        Force at least one cycle during the pre-market window (04:00-09:30 ET),
-        once per weekday, so the DB has fresh pre-open data.
-        """
-        et_now = datetime.now(ZoneInfo('America/New_York'))
-        if et_now.weekday() >= 5:  # Sat/Sun
-            return
+    def _et_now(self) -> datetime:
+        return datetime.now(self.market_tz)
 
-        premarket_start = et_now.replace(hour=4, minute=0, second=0, microsecond=0)
-        market_open = et_now.replace(hour=9, minute=30, second=0, microsecond=0)
-        if not (premarket_start <= et_now < market_open):
-            return
-
-        today = et_now.date()
-        if self.last_premarket_cycle_date == today:
-            return
-
-        db = ForesightDB(self.db_path)
-        recent_cycles = db.get_recent_cycles(limit=50)
-
-        has_today_premarket_cycle = False
-        for cycle in recent_cycles:
-            start_raw = cycle.get('start_time')
-            if not start_raw:
+    def _parse_overnight_check_times(self, raw: str) -> List[Tuple[int, int]]:
+        """Parse comma-separated HH:MM times for overnight checks."""
+        parsed: List[Tuple[int, int]] = []
+        for token in (raw or '').split(','):
+            token = token.strip()
+            if not token:
                 continue
             try:
-                # SQLite timestamps are naive strings; interpret as local server time.
-                start_dt = datetime.fromisoformat(str(start_raw))
-            except Exception:
-                continue
-            if start_dt.date() == today and start_dt.time() < market_open.time():
-                has_today_premarket_cycle = True
-                break
+                hour_str, minute_str = token.split(':', 1)
+                hour, minute = int(hour_str), int(minute_str)
+                if 0 <= hour <= 23 and 0 <= minute <= 59:
+                    parsed.append((hour, minute))
+            except ValueError:
+                logger.warning(f'Ignoring invalid OVERNIGHT_CHECK_TIMES token: {token}')
+        if not parsed:
+            parsed = [(20, 0), (6, 0)]
+        parsed = sorted(set(parsed), key=lambda hm: (hm[0], hm[1]))
+        return parsed
 
-        if has_today_premarket_cycle:
-            self.last_premarket_cycle_date = today
-            return
+    def _market_window_for_date(self, day) -> Tuple[datetime, datetime]:
+        open_dt = datetime(
+            day.year,
+            day.month,
+            day.day,
+            self.market_open_hour,
+            self.market_open_minute,
+            tzinfo=self.market_tz
+        )
+        close_dt = datetime(
+            day.year,
+            day.month,
+            day.day,
+            self.market_close_hour,
+            self.market_close_minute,
+            tzinfo=self.market_tz
+        )
+        return open_dt, close_dt
 
-        logger.info('No pre-market cycle found for today; triggering pre-open cycle')
-        self._run_prediction_cycle()
-        self.last_premarket_cycle_date = today
+    def _is_market_open(self, dt: datetime) -> bool:
+        if dt.weekday() >= 5:
+            return False
+        open_dt, close_dt = self._market_window_for_date(dt.date())
+        return open_dt <= dt < close_dt
+
+    def _next_market_open(self, dt: datetime) -> datetime:
+        """
+        Return the next weekday market-open datetime after `dt`.
+        Uses weekday logic only (no holiday calendar).
+        """
+        cursor = dt
+        while True:
+            if cursor.weekday() < 5:
+                open_dt, close_dt = self._market_window_for_date(cursor.date())
+                if cursor < open_dt:
+                    return open_dt
+                if open_dt <= cursor < close_dt:
+                    # If currently open, "next open" is the next trading day.
+                    cursor = close_dt + timedelta(seconds=1)
+                else:
+                    cursor = datetime(
+                        cursor.year,
+                        cursor.month,
+                        cursor.day,
+                        23,
+                        59,
+                        59,
+                        tzinfo=self.market_tz
+                    ) + timedelta(seconds=1)
+            else:
+                cursor = datetime(
+                    cursor.year,
+                    cursor.month,
+                    cursor.day,
+                    23,
+                    59,
+                    59,
+                    tzinfo=self.market_tz
+                ) + timedelta(seconds=1)
+
+    def _is_valid_overnight_slot(self, slot_dt: datetime) -> bool:
+        if self._is_market_open(slot_dt):
+            return False
+        next_open = self._next_market_open(slot_dt)
+        hours_until_open = (next_open - slot_dt).total_seconds() / 3600.0
+        return 0 < hours_until_open <= self.overnight_lookahead_hours
+
+    def _next_scheduled_run(self, after_dt: datetime) -> Tuple[datetime, str]:
+        """
+        Compute the next scheduled run time:
+        - every MARKET_OPEN_INTERVAL_SECONDS during weekday market hours
+        - overnight checks at configured times when next open is within lookahead window
+        """
+        search_start = after_dt + timedelta(seconds=1)
+        candidates: List[Tuple[datetime, str]] = []
+        interval = timedelta(seconds=self.market_open_interval_seconds)
+
+        for day_offset in range(0, 8):
+            day = (search_start + timedelta(days=day_offset)).date()
+
+            if day.weekday() < 5:
+                open_dt, close_dt = self._market_window_for_date(day)
+                slot = open_dt
+                while slot < close_dt:
+                    if slot >= search_start:
+                        candidates.append((slot, 'market_open'))
+                    slot += interval
+
+            for hour, minute in self.overnight_check_times:
+                overnight_slot = datetime(
+                    day.year,
+                    day.month,
+                    day.day,
+                    hour,
+                    minute,
+                    tzinfo=self.market_tz
+                )
+                if overnight_slot < search_start:
+                    continue
+                if self._is_valid_overnight_slot(overnight_slot):
+                    candidates.append((overnight_slot, f'overnight_{hour:02d}:{minute:02d}'))
+
+        if not candidates:
+            fallback = search_start + timedelta(minutes=30)
+            return fallback, 'fallback'
+
+        return min(candidates, key=lambda x: x[0])
 
     def _run_prediction_cycle(self, cycle_id: Optional[int] = None):
         """

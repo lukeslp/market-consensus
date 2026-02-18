@@ -257,6 +257,12 @@ def worker_status():
         'worker': worker.get_status(),
         'config': {
             'cycle_interval': current_app.config['CYCLE_INTERVAL'],
+            'market_timezone': current_app.config['MARKET_TIMEZONE'],
+            'market_open': f"{current_app.config['MARKET_OPEN_HOUR']:02d}:{current_app.config['MARKET_OPEN_MINUTE']:02d}",
+            'market_close': f"{current_app.config['MARKET_CLOSE_HOUR']:02d}:{current_app.config['MARKET_CLOSE_MINUTE']:02d}",
+            'market_open_interval_seconds': current_app.config['MARKET_OPEN_INTERVAL_SECONDS'],
+            'overnight_check_times': current_app.config['OVERNIGHT_CHECK_TIMES'],
+            'overnight_lookahead_hours': current_app.config['OVERNIGHT_LOOKAHEAD_HOURS'],
             'max_stocks': current_app.config['MAX_STOCKS'],
             'lookback_days': current_app.config['LOOKBACK_DAYS']
         }

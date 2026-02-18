@@ -20,8 +20,21 @@ class Config:
     # Database (SQLite with WAL mode for concurrent reads)
     DB_PATH = os.environ.get('DB_PATH', str(BASE_DIR / 'foresight.db'))
 
-    # Prediction cycle
-    CYCLE_INTERVAL = int(os.environ.get('CYCLE_INTERVAL', 30))  # 30 seconds (dev), set to 600 for production
+    # Legacy cycle interval (kept for backwards compatibility with existing tooling)
+    CYCLE_INTERVAL = int(os.environ.get('CYCLE_INTERVAL', 1800))
+
+    # Market-aware scheduling
+    MARKET_TIMEZONE = os.environ.get('MARKET_TIMEZONE', 'America/New_York')
+    MARKET_OPEN_HOUR = int(os.environ.get('MARKET_OPEN_HOUR', 9))
+    MARKET_OPEN_MINUTE = int(os.environ.get('MARKET_OPEN_MINUTE', 30))
+    MARKET_CLOSE_HOUR = int(os.environ.get('MARKET_CLOSE_HOUR', 16))
+    MARKET_CLOSE_MINUTE = int(os.environ.get('MARKET_CLOSE_MINUTE', 0))
+    MARKET_OPEN_INTERVAL_SECONDS = int(
+        os.environ.get('MARKET_OPEN_INTERVAL_SECONDS', os.environ.get('CYCLE_INTERVAL', 1800))
+    )  # default every 30 minutes during market hours
+    OVERNIGHT_CHECK_TIMES = os.environ.get('OVERNIGHT_CHECK_TIMES', '20:00,06:00')
+    OVERNIGHT_LOOKAHEAD_HOURS = int(os.environ.get('OVERNIGHT_LOOKAHEAD_HOURS', 18))
+    SCHEDULE_POLL_SECONDS = int(os.environ.get('SCHEDULE_POLL_SECONDS', 20))
 
     # LLM Providers
     PROVIDERS = {
@@ -72,7 +85,6 @@ class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
     TESTING = False
-    CYCLE_INTERVAL = int(os.environ.get('CYCLE_INTERVAL', 600))  # 10 minutes in production
 
 
 config = {

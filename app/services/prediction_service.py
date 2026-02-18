@@ -439,6 +439,7 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
         for persona in personas:
             prompt = f"""You are a {persona} for short-term equity ideas.
 List {count} US ticker symbols for likely movement in the next 1-7 days.
+Prioritize names with fresh catalysts from the latest market/news context.
 
 Return ONLY a JSON array of ticker symbols.
 Example: ["AAPL", "MSFT", "TSLA"]"""
@@ -595,7 +596,8 @@ Symbol: {symbol}
 Current Price: ${stock_data.get('current_price', 'N/A')}
 Recent Price Data: {stock_data.get('close', [])[-10:]}
 
-Based on technical analysis of the recent price action, predict:
+Use both price action and recent news/catalyst context (if your provider has web/news access).
+Based on that, predict:
 1. Direction (UP/DOWN/NEUTRAL)
 2. Confidence (0.0 to 1.0)
 3. Brief reasoning (2-3 sentences)
@@ -678,6 +680,7 @@ Analyze this stock and make a short-term prediction (1-7 days):
 Symbol: {symbol}
 Current Price: ${stock_data.get('current_price', 'N/A')}
 Recent Price Data: {stock_data.get('close', [])[-10:]}
+Recent context requirement: incorporate latest relevant headlines/catalysts when possible.
 
 Return JSON only:
 {{

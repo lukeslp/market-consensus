@@ -67,7 +67,12 @@ All settings are environment variables with sensible defaults.
 |----------|---------|---------|
 | `PORT` | `5062` | Server port |
 | `DB_PATH` | `foresight.db` | SQLite database file |
-| `CYCLE_INTERVAL` | `30` | Seconds between cycles (use `600` in production) |
+| `MARKET_TIMEZONE` | `America/New_York` | Market schedule timezone |
+| `MARKET_OPEN_INTERVAL_SECONDS` | `1800` | Run cadence while market is open (30 minutes) |
+| `OVERNIGHT_CHECK_TIMES` | `20:00,06:00` | Two overnight refresh runs before next open |
+| `OVERNIGHT_LOOKAHEAD_HOURS` | `18` | Only run overnight checks when next open is close enough |
+| `SCHEDULE_POLL_SECONDS` | `20` | Worker polling granularity for scheduled runs |
+| `CYCLE_INTERVAL` | `1800` | Legacy compatibility var; used as fallback for market-open cadence |
 | `MAX_STOCKS` | `10` | Stocks to discover per cycle |
 | `LOOKBACK_DAYS` | `30` | Historical price window sent to each analyst |
 | `DISCOVERY_PROVIDER` | `mistral` | Preferred default provider for non-swarm discovery fallback |
@@ -83,6 +88,14 @@ Model overrides (set in `app/config.py`):
 | gemini | `gemini-2.0-flash` |
 | mistral | `mistral-large-latest` |
 | perplexity | `sonar` |
+
+---
+
+## Scheduler Behavior
+
+- During market hours (default `09:30-16:00` ET on weekdays), the worker runs a new cycle every 30 minutes.
+- During closed hours, the worker runs two low-frequency refresh cycles (`20:00` and `06:00` ET by default) to refresh news/catalyst context before the next open.
+- Weekend behavior follows the same logic and naturally schedules pre-open refreshes for Monday (for example, Sunday evening + Monday early morning).
 
 ---
 
