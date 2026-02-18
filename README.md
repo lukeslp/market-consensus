@@ -68,7 +68,10 @@ All settings are environment variables with sensible defaults.
 | `PORT` | `5062` | Server port |
 | `DB_PATH` | `foresight.db` | SQLite database file |
 | `MARKET_TIMEZONE` | `America/New_York` | Market schedule timezone |
+| `USE_NYSE_CALENDAR` | `true` | Enable NYSE trading-day logic (holidays + early closes) |
 | `MARKET_OPEN_INTERVAL_SECONDS` | `1800` | Run cadence while market is open (30 minutes) |
+| `NYSE_EARLY_CLOSE_HOUR` | `13` | Early-close hour (ET) for supported NYSE half-days |
+| `NYSE_EARLY_CLOSE_MINUTE` | `00` | Early-close minute (ET) |
 | `OVERNIGHT_CHECK_TIMES` | `20:00,06:00` | Two overnight refresh runs before next open |
 | `OVERNIGHT_LOOKAHEAD_HOURS` | `18` | Only run overnight checks when next open is close enough |
 | `SCHEDULE_POLL_SECONDS` | `20` | Worker polling granularity for scheduled runs |
@@ -93,9 +96,11 @@ Model overrides (set in `app/config.py`):
 
 ## Scheduler Behavior
 
-- During market hours (default `09:30-16:00` ET on weekdays), the worker runs a new cycle every 30 minutes.
+- During market hours (default `09:30-16:00` ET), the worker runs a new cycle every 30 minutes.
 - During closed hours, the worker runs two low-frequency refresh cycles (`20:00` and `06:00` ET by default) to refresh news/catalyst context before the next open.
 - Weekend behavior follows the same logic and naturally schedules pre-open refreshes for Monday (for example, Sunday evening + Monday early morning).
+- NYSE holiday and early-close session logic is applied to scheduling (for example, New Year holiday closure and Black Friday early close).
+- If `pandas_market_calendars` is available, it is used for exchange-exact session windows; otherwise built-in NYSE rules are used.
 
 ---
 

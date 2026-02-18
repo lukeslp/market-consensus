@@ -4,8 +4,8 @@ Background worker for stock prediction cycles
 import time
 import logging
 import threading
-from typing import Optional, List, Dict, Tuple
-from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Tuple, Set
+from datetime import date as date_cls, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from db import ForesightDB
@@ -41,12 +41,23 @@ class PredictionWorker:
         self.market_open_minute = int(config.get('MARKET_OPEN_MINUTE', 30))
         self.market_close_hour = int(config.get('MARKET_CLOSE_HOUR', 16))
         self.market_close_minute = int(config.get('MARKET_CLOSE_MINUTE', 0))
+        self.nyse_early_close_hour = int(config.get('NYSE_EARLY_CLOSE_HOUR', 13))
+        self.nyse_early_close_minute = int(config.get('NYSE_EARLY_CLOSE_MINUTE', 0))
+        use_nyse_raw = config.get('USE_NYSE_CALENDAR', True)
+        if isinstance(use_nyse_raw, str):
+            self.use_nyse_calendar = use_nyse_raw.lower() not in ('0', 'false', 'no')
+        else:
+            self.use_nyse_calendar = bool(use_nyse_raw)
         self.market_open_interval_seconds = max(60, int(config.get('MARKET_OPEN_INTERVAL_SECONDS', 1800)))
         self.overnight_lookahead_hours = max(1, int(config.get('OVERNIGHT_LOOKAHEAD_HOURS', 18)))
         self.schedule_poll_seconds = max(5, int(config.get('SCHEDULE_POLL_SECONDS', 20)))
         self.overnight_check_times = self._parse_overnight_check_times(
             config.get('OVERNIGHT_CHECK_TIMES', '20:00,06:00')
         )
+        self._nyse_holiday_cache: Dict[int, Set[date_cls]] = {}
+        self._nyse_session_cache: Dict[date_cls, Optional[Tuple[datetime, datetime]]] = {}
+        self._nyse_calendar = None
+        self._init_nyse_calendar()
 
         # Initialize services
         self.stock_service = StockService()
@@ -131,6 +142,19 @@ class PredictionWorker:
     def _et_now(self) -> datetime:
         return datetime.now(self.market_tz)
 
+    def _init_nyse_calendar(self):
+        """Initialize optional external NYSE calendar provider when available."""
+        if not self.use_nyse_calendar:
+            logger.info('NYSE calendar integration disabled via USE_NYSE_CALENDAR=0')
+            return
+        try:
+            import pandas_market_calendars as mcal
+            self._nyse_calendar = mcal.get_calendar('NYSE')
+            logger.info('Using pandas_market_calendars NYSE session calendar')
+        except Exception:
+            self._nyse_calendar = None
+            logger.info('pandas_market_calendars unavailable; using built-in NYSE calendar rules')
+
     def _parse_overnight_check_times(self, raw: str) -> List[Tuple[int, int]]:
         """Parse comma-separated HH:MM times for overnight checks."""
         parsed: List[Tuple[int, int]] = []
@@ -150,7 +174,148 @@ class PredictionWorker:
         parsed = sorted(set(parsed), key=lambda hm: (hm[0], hm[1]))
         return parsed
 
-    def _market_window_for_date(self, day) -> Tuple[datetime, datetime]:
+    def _observed_fixed_holiday(self, day: date_cls) -> date_cls:
+        """Observed date for fixed-date NYSE holidays."""
+        if day.weekday() == 5:  # Saturday -> Friday
+            return day - timedelta(days=1)
+        if day.weekday() == 6:  # Sunday -> Monday
+            return day + timedelta(days=1)
+        return day
+
+    @staticmethod
+    def _nth_weekday_of_month(year: int, month: int, weekday: int, nth: int) -> date_cls:
+        first = date_cls(year, month, 1)
+        delta_days = (weekday - first.weekday()) % 7 + (nth - 1) * 7
+        return first + timedelta(days=delta_days)
+
+    @staticmethod
+    def _last_weekday_of_month(year: int, month: int, weekday: int) -> date_cls:
+        if month == 12:
+            first_next = date_cls(year + 1, 1, 1)
+        else:
+            first_next = date_cls(year, month + 1, 1)
+        last = first_next - timedelta(days=1)
+        delta_days = (last.weekday() - weekday) % 7
+        return last - timedelta(days=delta_days)
+
+    @staticmethod
+    def _easter_sunday(year: int) -> date_cls:
+        """Gregorian calendar Easter algorithm."""
+        a = year % 19
+        b = year // 100
+        c = year % 100
+        d = b // 4
+        e = b % 4
+        f = (b + 8) // 25
+        g = (b - f + 1) // 3
+        h = (19 * a + b - d - g + 15) % 30
+        i = c // 4
+        k = c % 4
+        l = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * l) // 451
+        month = (h + l - 7 * m + 114) // 31
+        day = ((h + l - 7 * m + 114) % 31) + 1
+        return date_cls(year, month, day)
+
+    def _nyse_holidays(self, year: int) -> Set[date_cls]:
+        cached = self._nyse_holiday_cache.get(year)
+        if cached is not None:
+            return cached
+
+        holidays: Set[date_cls] = set()
+
+        # Fixed-date holidays (observed), including cross-year New Year's observation.
+        fixed_candidates = [
+            date_cls(year, 1, 1),       # New Year's Day
+            date_cls(year, 6, 19),      # Juneteenth (NYSE since 2022)
+            date_cls(year, 7, 4),       # Independence Day
+            date_cls(year, 12, 25),     # Christmas Day
+            date_cls(year + 1, 1, 1),   # Next year's New Year's observed may fall in current year
+        ]
+        for candidate in fixed_candidates:
+            if candidate.month == 6 and candidate.day == 19 and candidate.year < 2022:
+                continue
+            observed = self._observed_fixed_holiday(candidate)
+            if observed.year == year:
+                holidays.add(observed)
+
+        # Monday holidays
+        holidays.add(self._nth_weekday_of_month(year, 1, 0, 3))   # MLK Day
+        holidays.add(self._nth_weekday_of_month(year, 2, 0, 3))   # Washington's Birthday
+        holidays.add(self._last_weekday_of_month(year, 5, 0))     # Memorial Day
+        holidays.add(self._nth_weekday_of_month(year, 9, 0, 1))   # Labor Day
+
+        # Thanksgiving
+        thanksgiving = self._nth_weekday_of_month(year, 11, 3, 4)  # Thursday
+        holidays.add(thanksgiving)
+
+        # Good Friday
+        easter = self._easter_sunday(year)
+        holidays.add(easter - timedelta(days=2))
+
+        self._nyse_holiday_cache[year] = holidays
+        return holidays
+
+    def _is_early_close_day_fallback(self, day: date_cls) -> bool:
+        """
+        Built-in NYSE early-close rules (1:00 PM ET):
+        - Day after Thanksgiving
+        - Christmas Eve (when it is a trading day)
+        - Trading day before Independence Day observed holiday
+        """
+        if day.weekday() >= 5:
+            return False
+
+        holidays = self._nyse_holidays(day.year)
+        if day in holidays:
+            return False
+
+        thanksgiving = self._nth_weekday_of_month(day.year, 11, 3, 4)
+        if day == thanksgiving + timedelta(days=1):
+            return True
+
+        if day == date_cls(day.year, 12, 24):
+            return True
+
+        independence_observed = self._observed_fixed_holiday(date_cls(day.year, 7, 4))
+        prev_trading_day = independence_observed - timedelta(days=1)
+        while prev_trading_day.weekday() >= 5 or prev_trading_day in holidays:
+            prev_trading_day -= timedelta(days=1)
+        if day == prev_trading_day:
+            return True
+
+        return False
+
+    def _nyse_session_for_date(self, day: date_cls) -> Optional[Tuple[datetime, datetime]]:
+        """Return NYSE open/close datetimes in market timezone for a date."""
+        if day in self._nyse_session_cache:
+            return self._nyse_session_cache[day]
+
+        # Preferred: external exchange session calendar if available.
+        if self._nyse_calendar is not None:
+            try:
+                schedule = self._nyse_calendar.schedule(
+                    start_date=day.isoformat(),
+                    end_date=day.isoformat()
+                )
+                if not schedule.empty:
+                    open_ts = schedule.iloc[0]['market_open']
+                    close_ts = schedule.iloc[0]['market_close']
+                    open_dt = open_ts.tz_convert(self.market_tz).to_pydatetime()
+                    close_dt = close_ts.tz_convert(self.market_tz).to_pydatetime()
+                    self._nyse_session_cache[day] = (open_dt, close_dt)
+                    return self._nyse_session_cache[day]
+                self._nyse_session_cache[day] = None
+                return None
+            except Exception as e:
+                logger.warning(f'NYSE calendar provider failed for {day}: {e}; using built-in rules')
+                self._nyse_calendar = None
+
+        # Fallback: built-in NYSE holiday/session rules.
+        if day.weekday() >= 5 or day in self._nyse_holidays(day.year):
+            self._nyse_session_cache[day] = None
+            return None
+
         open_dt = datetime(
             day.year,
             day.month,
@@ -159,56 +324,65 @@ class PredictionWorker:
             self.market_open_minute,
             tzinfo=self.market_tz
         )
+
+        close_hour = self.market_close_hour
+        close_minute = self.market_close_minute
+        if self._is_early_close_day_fallback(day):
+            close_hour = self.nyse_early_close_hour
+            close_minute = self.nyse_early_close_minute
+
         close_dt = datetime(
             day.year,
             day.month,
             day.day,
-            self.market_close_hour,
-            self.market_close_minute,
+            close_hour,
+            close_minute,
             tzinfo=self.market_tz
         )
-        return open_dt, close_dt
+        self._nyse_session_cache[day] = (open_dt, close_dt)
+        return self._nyse_session_cache[day]
+
+    def _market_window_for_date(self, day: date_cls) -> Optional[Tuple[datetime, datetime]]:
+        return self._nyse_session_for_date(day)
 
     def _is_market_open(self, dt: datetime) -> bool:
-        if dt.weekday() >= 5:
+        session = self._market_window_for_date(dt.date())
+        if not session:
             return False
-        open_dt, close_dt = self._market_window_for_date(dt.date())
+        open_dt, close_dt = session
         return open_dt <= dt < close_dt
 
     def _next_market_open(self, dt: datetime) -> datetime:
         """
-        Return the next weekday market-open datetime after `dt`.
-        Uses weekday logic only (no holiday calendar).
+        Return the next NYSE market-open datetime strictly after or containing `dt`.
+        If `dt` is during a trading session, returns the following session open.
         """
-        cursor = dt
-        while True:
-            if cursor.weekday() < 5:
-                open_dt, close_dt = self._market_window_for_date(cursor.date())
-                if cursor < open_dt:
+        start_day = dt.date()
+        for offset in range(0, 20):
+            day = start_day + timedelta(days=offset)
+            session = self._market_window_for_date(day)
+            if not session:
+                continue
+            open_dt, close_dt = session
+            if offset == 0:
+                if dt < open_dt:
                     return open_dt
-                if open_dt <= cursor < close_dt:
-                    # If currently open, "next open" is the next trading day.
-                    cursor = close_dt + timedelta(seconds=1)
-                else:
-                    cursor = datetime(
-                        cursor.year,
-                        cursor.month,
-                        cursor.day,
-                        23,
-                        59,
-                        59,
-                        tzinfo=self.market_tz
-                    ) + timedelta(seconds=1)
-            else:
-                cursor = datetime(
-                    cursor.year,
-                    cursor.month,
-                    cursor.day,
-                    23,
-                    59,
-                    59,
-                    tzinfo=self.market_tz
-                ) + timedelta(seconds=1)
+                if open_dt <= dt < close_dt:
+                    # During session: next open is the next trading day.
+                    continue
+                # After close: continue searching.
+                continue
+            return open_dt
+
+        # Defensive fallback if no session was found in the lookahead window.
+        return datetime(
+            dt.year,
+            dt.month,
+            dt.day,
+            self.market_open_hour,
+            self.market_open_minute,
+            tzinfo=self.market_tz
+        ) + timedelta(days=1)
 
     def _is_valid_overnight_slot(self, slot_dt: datetime) -> bool:
         if self._is_market_open(slot_dt):
@@ -229,9 +403,9 @@ class PredictionWorker:
 
         for day_offset in range(0, 8):
             day = (search_start + timedelta(days=day_offset)).date()
-
-            if day.weekday() < 5:
-                open_dt, close_dt = self._market_window_for_date(day)
+            session = self._market_window_for_date(day)
+            if session:
+                open_dt, close_dt = session
                 slot = open_dt
                 while slot < close_dt:
                     if slot >= search_start:

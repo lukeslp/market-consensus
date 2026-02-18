@@ -25,10 +25,13 @@ class Config:
 
     # Market-aware scheduling
     MARKET_TIMEZONE = os.environ.get('MARKET_TIMEZONE', 'America/New_York')
+    USE_NYSE_CALENDAR = os.environ.get('USE_NYSE_CALENDAR', 'true').lower() not in ('0', 'false', 'no')
     MARKET_OPEN_HOUR = int(os.environ.get('MARKET_OPEN_HOUR', 9))
     MARKET_OPEN_MINUTE = int(os.environ.get('MARKET_OPEN_MINUTE', 30))
     MARKET_CLOSE_HOUR = int(os.environ.get('MARKET_CLOSE_HOUR', 16))
     MARKET_CLOSE_MINUTE = int(os.environ.get('MARKET_CLOSE_MINUTE', 0))
+    NYSE_EARLY_CLOSE_HOUR = int(os.environ.get('NYSE_EARLY_CLOSE_HOUR', 13))
+    NYSE_EARLY_CLOSE_MINUTE = int(os.environ.get('NYSE_EARLY_CLOSE_MINUTE', 0))
     MARKET_OPEN_INTERVAL_SECONDS = int(
         os.environ.get('MARKET_OPEN_INTERVAL_SECONDS', os.environ.get('CYCLE_INTERVAL', 1800))
     )  # default every 30 minutes during market hours
