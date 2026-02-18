@@ -204,7 +204,7 @@ class PredictionService:
     def _provider_stage(self, provider_name: str) -> str:
         if provider_name in ('xai', 'gemini'):
             return 'core'
-        if provider_name in ('anthropic', 'openai', 'perplexity'):
+        if provider_name in ('anthropic', 'openai'):
             return 'join'
         return 'side'
 
