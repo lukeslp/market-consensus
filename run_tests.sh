@@ -18,8 +18,9 @@ else
     exit 1
 fi
 
-# Set PYTHONPATH
-export PYTHONPATH=/home/coolhand/shared:$PYTHONPATH
+# Set PYTHONPATH (bundled llm_providers lives in project root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 
 # Display usage
 usage() {

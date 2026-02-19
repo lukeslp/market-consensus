@@ -14,9 +14,7 @@ from datetime import datetime, timedelta
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Add shared library to path
-if '/home/coolhand/shared' not in sys.path:
-    sys.path.insert(0, '/home/coolhand/shared')
+# llm_providers is now bundled in the project root (added via project_root above)
 
 from db import ForesightDB
 from app import create_app

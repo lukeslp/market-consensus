@@ -6,8 +6,8 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv('/home/coolhand/.env')
-load_dotenv('.env')  # Local overrides
+load_dotenv('.env')  # Local project overrides
+load_dotenv(os.path.expanduser('~/.env'), override=False)  # User-level fallback
 
 from app import create_app
 from app.config import config

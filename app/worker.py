@@ -978,10 +978,17 @@ class PredictionWorker:
             # --- MULTI-AGENT COUNCIL PHASE ---
             analyst_reports = []
             current_price = stock_data.get('current_price')
-            # Crypto trades 24/7 — evaluate after ~2.5h (next cycle window).
-            # Equities use a 7-day window aligned to closing prices.
+            # Prediction windows:
+            #   Crypto: 2.5 hours (24/7 trading)
+            #   Equities during market hours: 30 minutes
+            #   Equities after hours: 2.5 hours
             is_crypto = symbol.upper() in self.crypto_symbol_set
-            target_time = datetime.now() + timedelta(hours=2.5 if is_crypto else 168)
+            if is_crypto:
+                target_time = datetime.now() + timedelta(hours=2.5)
+            elif self._is_market_open(datetime.now(tz=self.market_tz)):
+                target_time = datetime.now() + timedelta(minutes=30)
+            else:
+                target_time = datetime.now() + timedelta(hours=2.5)
             if provider_groups is None:
                 provider_groups = self._provider_groups_for_order(self.FULL_PROVIDER_ORDER)
             if synthesis_order is None:

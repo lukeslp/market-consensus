@@ -1,12 +1,12 @@
 # Repository Guidelines
 
 ## /init Checklist
-1. Confirm repo root: `pwd` should be `/home/coolhand/projects/foresight`.
+1. Confirm repo root: `pwd` should be the cloned `foresight` directory.
 2. Read `README.md`, `app/config.py`, and `run_tests.sh` before making changes.
-3. Activate env and shared imports:
+3. Activate env and install deps:
    `python -m venv venv && source venv/bin/activate`
    `pip install -r requirements.txt`
-   `export PYTHONPATH=/home/coolhand/shared:$PYTHONPATH`
+   (llm_providers is bundled in the repo — no external PYTHONPATH needed)
 4. Check workspace state with `git status --short` and do not revert unrelated user changes.
 
 ## Project Structure & Module Organization

@@ -74,6 +74,23 @@ class PredictionService:
                 return self.DEFAULT_ANTHROPIC_MODEL
         return model
 
+    def _get_provider(self, provider_name: str):
+        """
+        Get a provider instance by name.
+        First checks the cached providers dict (keyed by provider name),
+        then falls back to ProviderFactory.
+        """
+        # Direct lookup by name (providers are keyed by name since _init_providers)
+        if provider_name in self.providers:
+            return self.providers[provider_name]
+        # Legacy role-based lookup
+        providers_map = self.config.get('PROVIDERS', {})
+        for role, p in self.providers.items():
+            if providers_map.get(role) == provider_name:
+                return p
+        # Fallback: create fresh from factory
+        return ProviderFactory.get_provider(provider_name)
+
     def _complete_with_optional_model(self, provider, messages, model=None):
         """
         Call provider.complete without passing model when unset.
@@ -244,20 +261,14 @@ class PredictionService:
         from llm_providers import Message
         for provider_name in stage_order:
             try:
-                provider = None
-                for role, p in self.providers.items():
-                    if self.config['PROVIDERS'].get(role) == provider_name:
-                        provider = p
-                        break
-                if not provider:
-                    provider = ProviderFactory.get_provider(provider_name)
+                provider = self._get_provider(provider_name)
 
                 model = self._resolve_model(provider_name, provider)
                 if model:
                     provider.model = model
 
                 prompt = f"""You are one voting member of a hedge fund research council.
-Debate and vote on the best 1-7 day direction for {symbol}.
+Debate and vote on the best short-term direction for {symbol} over the next prediction window.
 
 Symbol: {symbol}
 Current Price: ${stock_data.get('current_price', 'N/A')}
@@ -334,19 +345,19 @@ Return JSON only:
             List of stock symbols
         """
         prompt = f"""You are a stock market analyst. Identify {count} publicly traded stocks
-that are currently interesting for short-term trading (next 1-7 days).
+that are currently interesting for short-term trading (next 30 minutes to 2.5 hours).
 
 Focus on stocks with:
 - Recent news or events
-- High volatility
+- High volatility or momentum
 - Strong market interest
-- Clear trading signals
+- Clear short-term trading signals
 
 Return ONLY a JSON array of ticker symbols, nothing else.
 Example: ["AAPL", "MSFT", "TSLA"]"""
 
         # Discovery fallback chain: configured provider first, then alternates.
-        primary = self.config['PROVIDERS'].get('discovery')
+        primary = self.config.get('PROVIDERS', {}).get('discovery', 'xai')
         chain = [primary, 'xai', 'anthropic', 'gemini', 'mistral']
         chain = list(dict.fromkeys([p for p in chain if p]))
 
@@ -355,13 +366,7 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
 
         for provider_name in chain:
             try:
-                provider = None
-                for role, p in self.providers.items():
-                    if self.config['PROVIDERS'].get(role) == provider_name:
-                        provider = p
-                        break
-                if not provider:
-                    provider = ProviderFactory.get_provider(provider_name)
+                provider = self._get_provider(provider_name)
 
                 model = self._resolve_model(provider_name, provider)
                 if model:
@@ -435,13 +440,7 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
         """
         Provider-internal discovery swarm: multiple cheap roles vote on tickers.
         """
-        provider = None
-        for role, p in self.providers.items():
-            if self.config['PROVIDERS'].get(role) == provider_name:
-                provider = p
-                break
-        if not provider:
-            provider = ProviderFactory.get_provider(provider_name)
+        provider = self._get_provider(provider_name)
 
         model = self._resolve_model(provider_name, provider)
         if model:
@@ -454,7 +453,7 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
         from llm_providers import Message
         for persona in personas:
             prompt = f"""You are a {persona} for short-term equity ideas.
-List {count} US ticker symbols for likely movement in the next 1-7 days.
+List {count} US ticker symbols for likely movement in the next 30 minutes to 2.5 hours.
 Prioritize names with fresh catalysts from the latest market/news context.
 
 Return ONLY a JSON array of ticker symbols.
@@ -482,25 +481,19 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
 
     def _discover_symbols_from_provider(self, provider_name: str, count: int) -> List[str]:
         """Run discovery prompt with a specific provider."""
-        provider = None
-        for role, p in self.providers.items():
-            if self.config['PROVIDERS'].get(role) == provider_name:
-                provider = p
-                break
-        if not provider:
-            provider = ProviderFactory.get_provider(provider_name)
+        provider = self._get_provider(provider_name)
 
         model = self._resolve_model(provider_name, provider)
         if model:
             provider.model = model
         prompt = f"""You are a stock market analyst. Identify {count} publicly traded stocks
-that are currently interesting for short-term trading (next 1-7 days).
+that are currently interesting for short-term trading (next 30 minutes to 2.5 hours).
 
 Focus on stocks with:
 - Recent news or events
-- High volatility
+- High volatility or momentum
 - Strong market interest
-- Clear trading signals
+- Clear short-term trading signals
 
 Return ONLY a JSON array of ticker symbols, nothing else.
 Example: ["AAPL", "MSFT", "TSLA"]"""
@@ -585,27 +578,19 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
         if provider_name:
             fallback_chain = [provider_name]
         else:
-            fallback_chain = [self.config['PROVIDERS'].get('prediction', 'anthropic'), 'xai', 'mistral', 'gemini']
+            fallback_chain = [self.config.get('PROVIDERS', {}).get('prediction', 'anthropic'), 'xai', 'mistral', 'gemini']
             # Remove duplicates while preserving order
             fallback_chain = list(dict.fromkeys([p for p in fallback_chain if p]))
 
         for p_name in fallback_chain:
             try:
-                # Check if we have this provider initialized for any role
-                target_provider = None
-                for r, p in self.providers.items():
-                    if self.config['PROVIDERS'].get(r) == p_name:
-                        target_provider = p
-                        break
-                
-                if not target_provider:
-                    target_provider = ProviderFactory.get_provider(p_name)
+                target_provider = self._get_provider(p_name)
                 
                 model = self._resolve_model(p_name, target_provider)
                 if model:
                     target_provider.model = model
 
-                prompt = f"""Analyze this stock and make a short-term prediction (1-7 days):
+                prompt = f"""Analyze this stock and make a short-term prediction (next 30 minutes to 2.5 hours):
 
 Symbol: {symbol}
 Current Price: ${stock_data.get('current_price', 'N/A')}
@@ -674,13 +659,7 @@ Return your response as JSON:
             default_subagents = ['momentum', 'risk', 'news', 'contrarian']
             subagents = default_subagents[:n]
 
-        provider = None
-        for role, p in self.providers.items():
-            if self.config['PROVIDERS'].get(role) == provider_name:
-                provider = p
-                break
-        if not provider:
-            provider = ProviderFactory.get_provider(provider_name)
+        provider = self._get_provider(provider_name)
 
         model = self._resolve_model(provider_name, provider)
         if model:
@@ -690,7 +669,7 @@ Return your response as JSON:
         from llm_providers import Message
         for agent in subagents:
             prompt = f"""You are a specialized equity analyst agent with the role: {agent}.
-Analyze this stock and make a short-term prediction (1-7 days):
+Analyze this stock and make a short-term prediction (next 30 minutes to 2.5 hours):
 
 Symbol: {symbol}
 Current Price: ${stock_data.get('current_price', 'N/A')}
@@ -775,13 +754,15 @@ Return JSON only:
         Returns:
             Synthesized confidence score (0.0 to 1.0) or None
         """
-        if 'synthesis' not in self.providers:
+        # Use configured synthesis provider, falling back to anthropic
+        synthesis_name = self.config.get('PROVIDERS', {}).get('synthesis', 'anthropic')
+        if synthesis_name not in self.providers and 'anthropic' not in self.providers:
             logger.error('Synthesis provider not configured')
             return None
 
         try:
-            provider = self.providers['synthesis']
-            provider_name = self.config['PROVIDERS']['synthesis']
+            provider_name = synthesis_name
+            provider = self._get_provider(provider_name)
             model = self._resolve_model(provider_name, provider)
             if model:
                 provider.model = model

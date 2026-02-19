@@ -45,3 +45,4 @@ htmlcov/
 app_old.py
 db_old.py
 settings.py
+run_sandbox.sh

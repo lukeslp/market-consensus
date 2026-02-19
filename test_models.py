@@ -2,8 +2,8 @@ import sys
 import os
 import logging
 
-# Add shared library to path
-sys.path.insert(0, '/home/coolhand/shared')
+# Add project root to path so bundled llm_providers is importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from llm_providers import ProviderFactory
 

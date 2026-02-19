@@ -18,7 +18,7 @@ A stock prediction terminal that runs a staged multi-provider swarm debate on a 
 - **Sub-agent analysis** — each provider can run internal specialist sub-agents, then emit a provider-level vote with reasoning
 - **Council + synthesis voting** — weighted democratic votes happen twice: analyst council vote and final synthesis vote across all providers
 - **Continuous cycles** — a background daemon thread runs prediction cycles on a configurable interval; each cycle discovers equities, optionally adds configured crypto symbols, fetches live prices via yfinance, and logs everything to SQLite
-- **Accuracy tracking** — predictions are evaluated against actual closing prices after the 7-day target window; per-provider accuracy stats accumulate over time
+- **Accuracy tracking** — predictions are evaluated against actual prices after the target window (30 min during market hours, 2.5h after hours/crypto); per-provider accuracy stats accumulate over time
 - **Real-time dashboard** — D3.js v7 visualizations stream live events over SSE; no page refresh needed to watch a cycle run
 - **Oracle Terminal aesthetic** — Cinzel display font, JetBrains Mono for data, amber accent on near-black
 - **Persistent SQLite store** — WAL mode for concurrent reads during background writes; six normalized tables; no external database required
@@ -29,21 +29,23 @@ A stock prediction terminal that runs a staged multi-provider swarm debate on a 
 
 ```bash
 # Clone and set up
-cd /home/coolhand/projects/foresight
+git clone https://github.com/lukeslp/foresight.git
+cd foresight
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-pip install -e /home/coolhand/shared[all]   # shared LLM provider library
 
-# Set API keys
+# Set API keys (or source from a file)
 export XAI_API_KEY=your_xai_key
 export ANTHROPIC_API_KEY=your_anthropic_key
 export GEMINI_API_KEY=your_gemini_key
 export MISTRAL_API_KEY=your_mistral_key
 export PERPLEXITY_API_KEY=your_perplexity_key
+export COHERE_API_KEY=your_cohere_key
+export OPENAI_API_KEY=your_openai_key
+# Optional: export HUGGINGFACE_API_KEY=your_hf_key
 
-# Run
-export PYTHONPATH=/home/coolhand/shared:$PYTHONPATH
+# Run (llm_providers is bundled in the repo)
 python run.py
 ```
 
@@ -150,6 +152,17 @@ The cycle is then marked `completed` and a `cycle_complete` SSE event is broadca
 
 ```
 foresight/
+├── llm_providers/               # Bundled LLM provider library (self-contained)
+│   ├── __init__.py              # Message, CompletionResponse, ProviderFactory
+│   ├── factory.py               # Provider registry and initialization
+│   ├── anthropic_provider.py    # Anthropic (Claude)
+│   ├── openai_provider.py       # OpenAI (GPT-4o)
+│   ├── gemini_provider.py       # Google Gemini
+│   ├── xai_provider.py          # xAI (Grok)
+│   ├── perplexity_provider.py   # Perplexity (Sonar)
+│   ├── mistral_provider.py      # Mistral
+│   ├── cohere_provider.py       # Cohere (Command)
+│   └── huggingface_provider.py  # HuggingFace (Llama)
 ├── app/
 │   ├── __init__.py              # Application factory, worker startup
 │   ├── config.py                # Environment-based configuration

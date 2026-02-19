@@ -12,7 +12,7 @@ Foresight is a stock prediction dashboard. A background worker runs continuous p
 
 ```bash
 source venv/bin/activate
-export PYTHONPATH=/home/coolhand/shared:$PYTHONPATH
+# llm_providers is bundled in the repo — no external shared library needed
 python run.py
 ```
 
@@ -51,7 +51,7 @@ All 8 providers participate in every phase. No fixed roles. Weights are adjustab
 Provider call order: `PROVIDER_ORDER` env var (default: `anthropic,openai,gemini,xai,...`).
 Overnight light mode uses premium tier by default: `OVERNIGHT_LIGHT_PROVIDER_ORDER=anthropic,openai,gemini`.
 
-**Critical**: All providers use `provider.complete(messages=[Message(...)])` from `~/shared/llm_providers/`. Never call `provider.generate()` — it does not exist.
+**Critical**: All providers use `provider.complete(messages=[Message(...)])` from the bundled `llm_providers/` package. Never call `provider.generate()` — it does not exist.
 
 ### Key Configuration
 
@@ -124,4 +124,4 @@ Test fixtures (in `tests/conftest.py`):
 
 - **LLM calls**: `provider.complete(messages=[Message(role='user', content=prompt)])` — response is a `CompletionResponse` with `.content` str
 - **JSON from LLM**: strip markdown code fences before `json.loads()` (see `generate_prediction()` regex pattern)
-- **SSE**: `~/home/coolhand/SNIPPETS/streaming-patterns/sse_streaming_responses.py`
+- **Prediction windows**: Crypto = 2.5h, Equities during market = 30min, Equities after hours = 2.5h (see `worker.py` target_time logic)

@@ -9,9 +9,10 @@ import fcntl
 import time
 import threading
 
-# Add shared library to path
-if '/home/coolhand/shared' not in sys.path:
-    sys.path.append('/home/coolhand/shared')
+# Add project root to path so bundled llm_providers is importable
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix

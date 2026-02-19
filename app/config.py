@@ -88,6 +88,15 @@ class Config:
         }.items() if model
     }
 
+    # Legacy role-based provider mapping (backwards-compatible with prediction_service.py)
+    # In the new democracy model, all providers participate in all phases.
+    # This mapping provides defaults for code that still references config['PROVIDERS'].
+    PROVIDERS = {
+        'discovery': os.environ.get('PROVIDER_DISCOVERY', 'xai'),
+        'prediction': os.environ.get('PROVIDER_PREDICTION', 'anthropic'),
+        'synthesis': os.environ.get('PROVIDER_SYNTHESIS', 'anthropic'),
+    }
+
     # Swarm-style democracy settings
     SWARM_SUBAGENTS_PER_PROVIDER = int(os.environ.get('SWARM_SUBAGENTS_PER_PROVIDER', 2))
 
