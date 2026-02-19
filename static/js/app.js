@@ -3,6 +3,26 @@ const API_ROOT = (() => {
   return p.endsWith('/') ? p : p.slice(0, p.lastIndexOf('/') + 1);
 })();
 
+const PROVIDER_LINKS = {
+  cohere:      'https://dashboard.cohere.com/api-keys',
+  gemini:      'https://aistudio.google.com/app/apikey',
+  openai:      'https://platform.openai.com/account/limits',
+  xai:         'https://console.x.ai',
+  anthropic:   'https://console.anthropic.com/settings/keys',
+  mistral:     'https://console.mistral.ai/api-keys',
+  perplexity:  'https://www.perplexity.ai/settings/api',
+  huggingface: 'https://huggingface.co/settings/tokens',
+};
+
+function classifyProviderError(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (s.includes('trial') || s.includes('1000 api calls')) return { label: 'Trial limit', linkText: 'Upgrade ↗' };
+  if (s.includes('429') || s.includes('rate limit') || s.includes('resource exhausted') || s.includes('quota')) return { label: 'Rate limited', linkText: 'Quotas ↗' };
+  if (s.includes('api key') || s.includes('unauthorized') || s.includes('invalid key') || s.includes('401')) return { label: 'Auth error', linkText: 'Keys ↗' };
+  if (s.includes('timeout') || s.includes('connection')) return { label: 'Timeout', linkText: 'Status ↗' };
+  return { label: 'Error', linkText: 'Dashboard ↗' };
+}
+
 class ForesightDashboard {
   constructor() {
     this.api = new window.ForesightAPI(API_ROOT.replace(/\/$/, ''));
@@ -290,15 +310,18 @@ class ForesightDashboard {
         const name = (item.key || 'unknown').toUpperCase();
         const state = failed ? 'FAIL' : 'OK';
         const stateClass = failed ? 'fail' : 'ok';
-        const err = failed ? (item.last_error || 'Unknown provider error') : '';
-        const safeErr = String(err).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const link = PROVIDER_LINKS[(item.key || '').toLowerCase()];
+        const { label, linkText } = failed ? classifyProviderError(item.last_error) : {};
+        const errHtml = failed
+          ? `<p class="provider-error">${label}${link ? ` <a href="${link}" target="_blank" rel="noopener noreferrer" class="provider-err-link">${linkText}</a>` : ''}</p>`
+          : '';
         return `
           <article class="provider-health-item">
             <div class="provider-health-head">
               <span class="provider-name">${name}</span>
               <span class="provider-state ${stateClass}">${state}</span>
             </div>
-            ${failed ? `<p class="provider-error">${safeErr}</p>` : ''}
+            ${errHtml}
           </article>
         `;
       }).join('');
@@ -380,6 +403,12 @@ class ForesightDashboard {
     const type = payload?.type;
 
     if (type === 'connected' || type === 'heartbeat') return;
+
+    if (type === 'error') {
+      const msg = payload?.error || 'Stream error';
+      this.toast(msg.length > 80 ? msg.slice(0, 77) + '…' : msg);
+      return;
+    }
 
     if (type === 'cycle_start') {
       this.currentCycle = payload.cycle || null;
