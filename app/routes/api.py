@@ -185,63 +185,55 @@ def health_providers():
 
 @api_bp.route('/stream')
 def stream():
-    """SSE endpoint for real-time prediction updates"""
-    # Import ForesightDB to create instance directly (avoid Flask g context in generator)
+    """SSE endpoint for real-time prediction updates.
+
+    Uses cursor-based streaming (Last-Event-ID / id: N) so multiple browser
+    tabs can watch simultaneously without competing for events.
+    """
     from db import ForesightDB
-    
-    # Capture config values before generator to avoid context issues
+
     db_path = current_app.config['DB_PATH']
     sse_retry = current_app.config.get('SSE_RETRY', 3000)
 
+    # Capture Last-Event-ID before entering the generator (request context ends there)
+    try:
+        last_event_id = int(request.headers.get('Last-Event-ID', 0) or 0)
+    except (ValueError, TypeError):
+        last_event_id = 0
+
     def generate():
-        """Generate SSE events from database event queue"""
-        # Create direct database instance (not using Flask g)
         db = ForesightDB(db_path)
 
-        # Set SSE retry interval
-        yield f"retry: {sse_retry}\n\n"
+        # New connections start from the current tail so they don't replay history.
+        # Reconnecting tabs send Last-Event-ID and resume from where they left off.
+        last_id = last_event_id if last_event_id > 0 else db.get_latest_event_id()
 
-        # Send initial connection event
+        yield f"retry: {sse_retry}\n\n"
         yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})}\n\n"
 
-        # Stream events from database
         last_heartbeat = time.time()
-        heartbeat_interval = 30  # seconds
+        heartbeat_interval = 30
 
         while True:
             current_time = time.time()
-
             try:
-                # Get unprocessed events from database
-                events = db.get_unprocessed_events(limit=10)
+                events = db.get_events_after(after_id=last_id, limit=10)
 
-                if events:
-                    # Collect event IDs to mark as processed
-                    event_ids = []
+                for event in events:
+                    last_id = event['id']
+                    event_data = {
+                        'id': event['id'],
+                        'type': event['event_type'],
+                        'data': event.get('data') or {},
+                        'timestamp': event['timestamp']
+                    }
+                    # SSE id field lets the browser send Last-Event-ID on reconnect
+                    yield f"id: {event['id']}\ndata: {json.dumps(event_data)}\n\n"
 
-                    for event in events:
-                        event_ids.append(event['id'])
-
-                        # Format and yield the event
-                        event_data = {
-                            'id': event['id'],
-                            'type': event['event_type'],
-                            # db.get_unprocessed_events() already deserializes event['data']
-                            'data': event.get('data') or {},
-                            'timestamp': event['timestamp']
-                        }
-
-                        yield f"data: {json.dumps(event_data)}\n\n"
-
-                    # Mark all events as processed
-                    db.mark_events_processed(event_ids)
-
-                # Send heartbeat if needed
                 if current_time - last_heartbeat >= heartbeat_interval:
                     yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
                     last_heartbeat = current_time
 
-                # Sleep briefly before checking for more events
                 time.sleep(1)
 
             except GeneratorExit:
@@ -250,13 +242,7 @@ def stream():
 
             except Exception as e:
                 logger.error(f'SSE stream error: {e}')
-                # Send error event
-                error_data = {
-                    'type': 'error',
-                    'error': str(e),
-                    'timestamp': datetime.now().isoformat()
-                }
-                yield f"data: {json.dumps(error_data)}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
                 break
 
     return Response(
@@ -264,8 +250,7 @@ def stream():
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache, no-transform',
-            'X-Accel-Buffering': 'no',  # Disable nginx buffering
-            # Do not set Connection header for HTTP/2 compatibility
+            'X-Accel-Buffering': 'no',
         }
     )
 
