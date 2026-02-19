@@ -212,8 +212,15 @@ body {
   color: var(--muted);
   font-size: 0.66rem;
   line-height: 1.35;
-  word-break: break-word;
 }
+
+.provider-err-link {
+  color: var(--accent);
+  text-decoration: none;
+  opacity: 0.8;
+}
+.provider-err-link:hover { opacity: 1; text-decoration: underline; }
+.provider-err-link:focus-visible { border-radius: 2px; }
 
 .provider-health-empty {
   margin: 0;
