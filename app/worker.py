@@ -756,6 +756,9 @@ class PredictionWorker:
             # Note: cycle_complete event is auto-emitted by db.complete_cycle()
             self._write_heartbeat()
 
+            # Phase 4: Evaluate any predictions whose target window has passed
+            self._evaluate_pending_predictions(db)
+
         except Exception as e:
             logger.error(f'Error in prediction cycle: {e}', exc_info=True)
             if self.current_cycle_id:
