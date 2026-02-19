@@ -770,6 +770,54 @@ class PredictionWorker:
             self.last_cycle_time = time.time()
             self._write_heartbeat()
 
+    def _evaluate_pending_predictions(self, db: ForesightDB) -> None:
+        """Fetch actual prices and evaluate predictions whose target window has passed."""
+        try:
+            import yfinance as yf
+            pending = db.get_unevaluated_predictions(before_time=datetime.now())
+            if not pending:
+                return
+            logger.info(f'Evaluating {len(pending)} pending predictions')
+
+            # Group by stock_id so we only call yfinance once per ticker
+            from collections import defaultdict
+            by_stock: Dict[int, list] = defaultdict(list)
+            for p in pending:
+                by_stock[p['stock_id']].append(p)
+
+            for stock_id, preds in by_stock.items():
+                # Get the ticker from any prediction (they all share the same stock)
+                stock = db.get_stock_by_id(stock_id)
+                if not stock:
+                    continue
+                ticker = stock['ticker']
+                try:
+                    hist = yf.Ticker(ticker).history(period='5d')
+                    if hist.empty:
+                        continue
+                    actual_price = float(hist['Close'].iloc[-1])
+                except Exception as yf_err:
+                    logger.warning(f'yfinance fetch failed for {ticker}: {yf_err}')
+                    continue
+
+                for pred in preds:
+                    initial_price = pred.get('initial_price') or 0.0
+                    if initial_price <= 0:
+                        continue
+                    actual_direction = (
+                        'up' if actual_price > initial_price
+                        else 'down' if actual_price < initial_price
+                        else 'neutral'
+                    )
+                    db.evaluate_prediction(pred['id'], actual_price, actual_direction)
+                    logger.debug(
+                        f'Evaluated {ticker} pred {pred["id"]}: '
+                        f'{pred["predicted_direction"]} vs {actual_direction} '
+                        f'(initial={initial_price:.2f}, actual={actual_price:.2f})'
+                    )
+        except Exception as e:
+            logger.error(f'Error evaluating pending predictions: {e}', exc_info=True)
+
     def _discover_stocks(
         self,
         db: ForesightDB,
