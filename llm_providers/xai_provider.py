@@ -13,7 +13,7 @@ import requests
 class XAIProvider(BaseLLMProvider):
     """xAI Grok provider using OpenAI-compatible API."""
 
-    DEFAULT_MODEL = "grok-4"
+    DEFAULT_MODEL = "grok-4-1-fast-reasoning"
 
     def __init__(self, api_key: str = None, model: str = None):
         api_key = api_key or os.getenv("XAI_API_KEY")

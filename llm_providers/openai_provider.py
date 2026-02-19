@@ -13,7 +13,7 @@ import base64
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT provider."""
 
-    DEFAULT_MODEL = "gpt-4o"
+    DEFAULT_MODEL = "gpt-5.2"
 
     def __init__(self, api_key: str = None, model: str = None):
         api_key = api_key or os.getenv("OPENAI_API_KEY")

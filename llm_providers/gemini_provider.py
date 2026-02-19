@@ -24,7 +24,7 @@ class GroundedResponse:
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini provider."""
 
-    DEFAULT_MODEL = "gemini-2.0-flash"
+    DEFAULT_MODEL = "gemini-3-flash"
 
     def __init__(self, api_key: str = None, model: str = None):
         api_key = api_key or os.getenv("GEMINI_API_KEY")

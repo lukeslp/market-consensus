@@ -36,7 +36,7 @@ class BatchResponse:
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider."""
 
-    DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
+    DEFAULT_MODEL = "claude-sonnet-4-6"
 
     def __init__(self, api_key: str = None, model: str = None):
         api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
