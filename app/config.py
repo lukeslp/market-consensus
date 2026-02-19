@@ -67,7 +67,7 @@ class Config:
             'mistral': os.environ.get('MODEL_OVERRIDE_MISTRAL'),
             'perplexity': os.environ.get('MODEL_OVERRIDE_PERPLEXITY'),
             'openai': os.environ.get('MODEL_OVERRIDE_OPENAI'),
-            'manus': os.environ.get('MODEL_OVERRIDE_MANUS'),
+            'huggingface': os.environ.get('MODEL_OVERRIDE_HUGGINGFACE', 'meta-llama/Llama-3.3-70B-Instruct'),
         }.items() if model
     }
 

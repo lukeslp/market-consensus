@@ -14,7 +14,7 @@ A stock prediction terminal that runs a staged multi-provider swarm debate on a 
 
 ## Features
 
-- **Democratic provider swarm** — providers participate in `core` (xAI, Gemini), `join` (Anthropic, OpenAI, Perplexity), and `side` (Mistral, Cohere) stages
+- **Democratic provider swarm** — providers participate in `core` (xAI, Gemini), `join` (Anthropic, OpenAI, Perplexity), and `side` (Mistral, Cohere, HuggingFace/Llama) stages
 - **Sub-agent analysis** — each provider can run internal specialist sub-agents, then emit a provider-level vote with reasoning
 - **Council + synthesis voting** — weighted democratic votes happen twice: analyst council vote and final synthesis vote across all providers
 - **Continuous cycles** — a background daemon thread runs prediction cycles on a configurable interval; each cycle discovers equities, optionally adds configured crypto symbols, fetches live prices via yfinance, and logs everything to SQLite

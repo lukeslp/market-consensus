@@ -177,13 +177,14 @@ class PredictionService:
         Baseline trust weights before performance adjustment.
         """
         return {
-            'xai': 1.0,         # cheap search/context
-            'gemini': 1.0,      # cheap synthesis/search
-            'anthropic': 1.2,   # strong reasoning
-            'openai': 1.2,      # strong reasoning
-            'perplexity': 1.1,  # web-grounded, valuable for stock news
-            'mistral': 0.8,     # side input
-            'cohere': 0.6,      # low default weight
+            'xai': 1.0,           # cheap search/context
+            'gemini': 1.0,        # cheap synthesis/search
+            'anthropic': 1.2,     # strong reasoning
+            'openai': 1.2,        # strong reasoning
+            'perplexity': 1.1,    # web-grounded, valuable for stock news
+            'mistral': 0.8,       # side input
+            'cohere': 0.6,        # low default weight
+            'huggingface': 0.85,  # open-weight Llama, diversity input
         }
 
     def build_provider_weights(self, performance_map: Dict[str, float]) -> Dict[str, float]:
@@ -207,7 +208,7 @@ class PredictionService:
             return 'core'
         if provider_name in ('anthropic', 'openai', 'perplexity'):
             return 'join'
-        return 'side'
+        return 'side'  # mistral, cohere, huggingface
 
     def synthesize_council_swarm(
         self,
