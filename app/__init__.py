@@ -76,12 +76,15 @@ def create_app(config_class=Config):
     _worker = PredictionWorker(app.config)
     
     if not app.config.get('TESTING'):
-        if _try_acquire_worker_lock():
+        lock_acquired = _try_acquire_worker_lock()
+        _worker.scheduler_lock_acquired = lock_acquired
+        if lock_acquired:
             _worker.start()
             app.logger.info('Background prediction worker started')
         else:
             app.logger.info('Background worker lock held by another process; skipping worker start')
     else:
+        _worker.scheduler_lock_acquired = False
         app.logger.info('Background prediction worker disabled for testing')
 
     # Store worker reference in app for access from routes

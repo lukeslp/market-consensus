@@ -27,7 +27,11 @@ def health():
 
         # Check worker status
         worker = current_app.worker
-        worker_status = 'running' if worker.is_alive() else 'stopped'
+        if hasattr(worker, 'get_cluster_status'):
+            worker_info = worker.get_cluster_status()
+            worker_status = 'running' if worker_info.get('running') and worker_info.get('alive') else 'stopped'
+        else:
+            worker_status = 'running' if worker.is_alive() else 'stopped'
 
         return {
             'status': 'healthy',

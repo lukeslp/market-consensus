@@ -93,6 +93,30 @@ class TestPredictionService:
         # Should return empty list on error
         assert stocks == []
 
+    def test_parse_discovery_symbols_rejects_plain_text(self, app_context, mock_provider_factory):
+        """Discovery parser ignores non-JSON prose to avoid fake ticker extraction."""
+        from app.services.prediction_service import PredictionService
+
+        service = PredictionService(app_context.config)
+        symbols = service._parse_discovery_symbols(
+            "I CANNOT provide real time market data right now.",
+            count=10
+        )
+
+        assert symbols == []
+
+    def test_parse_discovery_symbols_parses_embedded_json_array(self, app_context, mock_provider_factory):
+        """Discovery parser still accepts valid JSON arrays embedded in verbose output."""
+        from app.services.prediction_service import PredictionService
+
+        service = PredictionService(app_context.config)
+        symbols = service._parse_discovery_symbols(
+            'Sure, here are ideas: ["AAPL", "MSFT", "TSLA"]',
+            count=3
+        )
+
+        assert symbols == ['AAPL', 'MSFT', 'TSLA']
+
     def test_generate_prediction(self, app_context, mock_provider_factory):
         """Can generate prediction for stock"""
         from app.services.prediction_service import PredictionService

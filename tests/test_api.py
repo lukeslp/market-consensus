@@ -234,6 +234,33 @@ class TestCycleControlEndpoints:
 
 
 @pytest.mark.api
+class TestWorkerStatusEndpoint:
+    """Test worker status endpoint"""
+
+    def test_worker_status_includes_current_cycle(self, client, db, sample_cycle):
+        """Worker status includes active DB cycle metadata."""
+        response = client.get('/api/worker/status')
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        assert 'worker' in data
+        assert 'current_cycle' in data
+        assert data['current_cycle']['id'] == sample_cycle['id']
+
+    def test_worker_status_includes_cluster_fields(self, client):
+        """Worker status exposes local/cluster fields for multi-process deployments."""
+        response = client.get('/api/worker/status')
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        worker = data['worker']
+        assert 'status_source' in worker
+        assert 'local_running' in worker
+        assert 'local_alive' in worker
+        assert 'scheduler_lock_acquired' in worker
+
+
+@pytest.mark.api
 @pytest.mark.slow
 class TestSSEStreamingEndpoint:
     """Test Server-Sent Events streaming"""

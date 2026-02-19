@@ -38,6 +38,8 @@ class Config:
     OVERNIGHT_CHECK_TIMES = os.environ.get('OVERNIGHT_CHECK_TIMES', '20:00,06:00')
     OVERNIGHT_LOOKAHEAD_HOURS = int(os.environ.get('OVERNIGHT_LOOKAHEAD_HOURS', 18))
     SCHEDULE_POLL_SECONDS = int(os.environ.get('SCHEDULE_POLL_SECONDS', 20))
+    WORKER_HEARTBEAT_PATH = os.environ.get('WORKER_HEARTBEAT_PATH', '/tmp/foresight.worker.heartbeat')
+    WORKER_HEARTBEAT_MAX_AGE_SECONDS = int(os.environ.get('WORKER_HEARTBEAT_MAX_AGE_SECONDS', 120))
     OVERNIGHT_LIGHT_MODE = os.environ.get('OVERNIGHT_LIGHT_MODE', 'true').lower() not in ('0', 'false', 'no')
     OVERNIGHT_FULL_DEBATE_EVERY = int(os.environ.get('OVERNIGHT_FULL_DEBATE_EVERY', 3))
     OVERNIGHT_LIGHT_PROVIDER_ORDER = os.environ.get(

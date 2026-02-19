@@ -2,6 +2,8 @@
 Background worker for stock prediction cycles
 """
 import time
+import json
+import os
 import logging
 import threading
 from typing import Optional, List, Dict, Tuple, Set
@@ -44,6 +46,9 @@ class PredictionWorker:
         self.total_cycles_completed: int = 0
         self.next_scheduled_run: Optional[datetime] = None
         self.next_scheduled_reason: Optional[str] = None
+        self.scheduler_lock_acquired: bool = False
+        self.heartbeat_path = config.get('WORKER_HEARTBEAT_PATH', '/tmp/foresight.worker.heartbeat')
+        self.heartbeat_max_age_seconds = max(15, int(config.get('WORKER_HEARTBEAT_MAX_AGE_SECONDS', 120)))
 
         # Scheduling configuration
         self.market_tz = ZoneInfo(config.get('MARKET_TIMEZONE', 'America/New_York'))
@@ -104,6 +109,7 @@ class PredictionWorker:
             name='PredictionWorker'
         )
         self.thread.start()
+        self._write_heartbeat()
         logger.info('Prediction worker started')
 
     def is_alive(self) -> bool:
@@ -115,6 +121,7 @@ class PredictionWorker:
         self.running = False
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)
+        self._write_heartbeat()
         logger.info('Prediction worker stopped')
 
     def get_status(self) -> dict:
@@ -127,20 +134,129 @@ class PredictionWorker:
             'total_cycles_completed': self.total_cycles_completed,
             'next_scheduled_run': self.next_scheduled_run.isoformat() if self.next_scheduled_run else None,
             'next_scheduled_reason': self.next_scheduled_reason,
+            'pid': os.getpid(),
+            'scheduler_lock_acquired': self.scheduler_lock_acquired,
         }
+
+    def get_cluster_status(self) -> dict:
+        """
+        Return process-safe worker status.
+        In Gunicorn multi-worker mode, only one process owns the scheduler lock.
+        """
+        status = self.get_status()
+        status['local_running'] = status['running']
+        status['local_alive'] = status['alive']
+        status['status_source'] = 'local'
+        status['heartbeat_fresh'] = False
+        status['heartbeat_age_seconds'] = None
+        status['scheduler_pid'] = os.getpid() if self.scheduler_lock_acquired else None
+
+        heartbeat = self._read_heartbeat()
+        if not heartbeat:
+            return status
+
+        status['heartbeat_fresh'] = bool(heartbeat.get('fresh'))
+        status['heartbeat_age_seconds'] = heartbeat.get('age_seconds')
+        status['scheduler_pid'] = heartbeat.get('pid')
+
+        if not heartbeat.get('fresh'):
+            return status
+
+        status['running'] = bool(heartbeat.get('running'))
+        status['alive'] = bool(heartbeat.get('alive'))
+        status['current_cycle_id'] = heartbeat.get('current_cycle_id')
+        status['last_cycle_time'] = heartbeat.get('last_cycle_time')
+        status['total_cycles_completed'] = heartbeat.get('total_cycles_completed', status['total_cycles_completed'])
+        status['next_scheduled_run'] = heartbeat.get('next_scheduled_run')
+        status['next_scheduled_reason'] = heartbeat.get('next_scheduled_reason')
+        status['status_source'] = 'heartbeat'
+        return status
+
+    def _heartbeat_payload(self) -> Dict:
+        return {
+            'pid': os.getpid(),
+            'updated_ts': time.time(),
+            'updated_at': datetime.utcnow().isoformat() + 'Z',
+            'running': self.running,
+            'alive': self.thread.is_alive() if self.thread else False,
+            'current_cycle_id': self.current_cycle_id,
+            'last_cycle_time': self.last_cycle_time,
+            'total_cycles_completed': self.total_cycles_completed,
+            'next_scheduled_run': self.next_scheduled_run.isoformat() if self.next_scheduled_run else None,
+            'next_scheduled_reason': self.next_scheduled_reason,
+        }
+
+    def _write_heartbeat(self):
+        """Persist worker heartbeat for cross-process status checks."""
+        if not self.scheduler_lock_acquired:
+            return
+        try:
+            with open(self.heartbeat_path, 'w', encoding='utf-8') as f:
+                json.dump(self._heartbeat_payload(), f)
+        except Exception as e:
+            logger.debug(f'Failed to write worker heartbeat: {e}')
+
+    def _read_heartbeat(self) -> Optional[Dict]:
+        try:
+            with open(self.heartbeat_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            logger.debug(f'Failed to read worker heartbeat: {e}')
+            return None
+
+        try:
+            updated_ts = float(payload.get('updated_ts') or 0)
+            age_seconds = max(0.0, time.time() - updated_ts) if updated_ts > 0 else float('inf')
+            payload['age_seconds'] = age_seconds
+            payload['fresh'] = age_seconds <= self.heartbeat_max_age_seconds
+        except Exception:
+            payload['age_seconds'] = None
+            payload['fresh'] = False
+        return payload
+
+    def _recover_interrupted_cycles(self):
+        """
+        Mark any leftover active cycles as failed on scheduler startup.
+        Active cycles cannot survive a process restart safely.
+        """
+        db = ForesightDB(self.db_path)
+        try:
+            with db.get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT id FROM cycles WHERE status = 'active' ORDER BY start_time DESC"
+                ).fetchall()
+            if not rows:
+                return
+
+            recovered_ids = []
+            for row in rows:
+                cycle_id = int(row['id'])
+                if db.fail_cycle(cycle_id, 'Recovered after worker restart'):
+                    recovered_ids.append(cycle_id)
+            if recovered_ids:
+                logger.warning(
+                    f'Marked interrupted active cycles as failed on startup: {recovered_ids}'
+                )
+        except Exception as e:
+            logger.error(f'Failed to recover interrupted cycles: {e}', exc_info=True)
 
     def _run_worker(self):
         """Main worker loop with market-aware scheduling."""
+        self._recover_interrupted_cycles()
         now = self._et_now()
         self.next_scheduled_run, self.next_scheduled_reason = self._next_scheduled_run(after_dt=now)
         logger.info(
             f'Worker schedule initialized: next run at {self.next_scheduled_run.isoformat()} '
             f'({self.next_scheduled_reason})'
         )
+        self._write_heartbeat()
 
         while self.running:
             try:
                 now = self._et_now()
+                self._write_heartbeat()
                 if self.next_scheduled_run and now >= self.next_scheduled_run:
                     logger.info(
                         f'Scheduled cycle due at {self.next_scheduled_run.isoformat()} '
@@ -154,6 +270,7 @@ class PredictionWorker:
                         f'Next scheduled cycle at {self.next_scheduled_run.isoformat()} '
                         f'({self.next_scheduled_reason})'
                     )
+                    self._write_heartbeat()
                     continue
 
                 # Sleep in short increments so stop() remains responsive and schedule stays accurate.
@@ -165,6 +282,7 @@ class PredictionWorker:
 
             except Exception as e:
                 logger.error(f'Worker error: {e}', exc_info=True)
+                self._write_heartbeat()
                 time.sleep(min(60, self.schedule_poll_seconds))
 
     def _et_now(self) -> datetime:
@@ -517,6 +635,27 @@ class PredictionWorker:
 
         return min(candidates, key=lambda x: x[0])
 
+    def _bootstrap_cycle_blocklist(self, provider_order: List[str]) -> Set[str]:
+        """
+        Seed a per-cycle blocklist from persisted runtime failures.
+        This avoids retrying providers that are already known hard-fail.
+        """
+        blocklist: Set[str] = set()
+        try:
+            runtime_status = self.prediction_service.get_provider_runtime_status()
+        except Exception as e:
+            logger.debug(f'Unable to load provider runtime status for blocklist bootstrap: {e}')
+            return blocklist
+
+        for provider_name in provider_order:
+            state = runtime_status.get(provider_name, {})
+            if not state:
+                continue
+            error_text = str(state.get('last_error') or '')
+            if (not state.get('healthy', True)) and self._should_block_provider(error_text):
+                blocklist.add(provider_name)
+        return blocklist
+
     def _run_prediction_cycle(self, cycle_id: Optional[int] = None, run_reason: Optional[str] = None):
         """
         Execute a complete prediction cycle
@@ -535,7 +674,12 @@ class PredictionWorker:
             self.current_cycle_id = cycle_id
             provider_order, provider_mode = self._provider_order_for_run(run_reason)
             provider_groups = self._provider_groups_for_order(provider_order)
-            provider_blocklist: Set[str] = set()
+            provider_blocklist = self._bootstrap_cycle_blocklist(provider_order)
+            if provider_blocklist:
+                logger.info(
+                    f'Initial cycle blocklist from runtime health: {sorted(provider_blocklist)}'
+                )
+            self._write_heartbeat()
 
             logger.info(
                 f'Started processing prediction cycle {cycle_id} '
@@ -572,6 +716,7 @@ class PredictionWorker:
             self.total_cycles_completed += 1
             logger.info(f'Completed prediction cycle {cycle_id} (total: {self.total_cycles_completed})')
             # Note: cycle_complete event is auto-emitted by db.complete_cycle()
+            self._write_heartbeat()
 
         except Exception as e:
             logger.error(f'Error in prediction cycle: {e}', exc_info=True)
@@ -582,6 +727,7 @@ class PredictionWorker:
         finally:
             self.current_cycle_id = None
             self.last_cycle_time = time.time()
+            self._write_heartbeat()
 
     def _discover_stocks(
         self,

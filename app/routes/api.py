@@ -251,10 +251,18 @@ def stream():
 @api_bp.route('/worker/status')
 def worker_status():
     """Get background worker status"""
+    db = get_db()
     worker = current_app.worker
+    status = worker.get_cluster_status() if hasattr(worker, 'get_cluster_status') else worker.get_status()
+    current_cycle = db.get_current_cycle()
+
+    # If the scheduler heartbeat has no in-flight cycle, surface DB active cycle for visibility.
+    if current_cycle and not status.get('current_cycle_id'):
+        status['current_cycle_id'] = current_cycle['id']
 
     return jsonify({
-        'worker': worker.get_status(),
+        'worker': status,
+        'current_cycle': current_cycle,
         'config': {
             'cycle_interval': current_app.config['CYCLE_INTERVAL'],
             'market_timezone': current_app.config['MARKET_TIMEZONE'],
@@ -263,6 +271,8 @@ def worker_status():
             'market_close': f"{current_app.config['MARKET_CLOSE_HOUR']:02d}:{current_app.config['MARKET_CLOSE_MINUTE']:02d}",
             'nyse_early_close': f"{current_app.config['NYSE_EARLY_CLOSE_HOUR']:02d}:{current_app.config['NYSE_EARLY_CLOSE_MINUTE']:02d}",
             'market_open_interval_seconds': current_app.config['MARKET_OPEN_INTERVAL_SECONDS'],
+            'worker_heartbeat_path': current_app.config['WORKER_HEARTBEAT_PATH'],
+            'worker_heartbeat_max_age_seconds': current_app.config['WORKER_HEARTBEAT_MAX_AGE_SECONDS'],
             'overnight_check_times': current_app.config['OVERNIGHT_CHECK_TIMES'],
             'overnight_lookahead_hours': current_app.config['OVERNIGHT_LOOKAHEAD_HOURS'],
             'overnight_light_mode': current_app.config['OVERNIGHT_LIGHT_MODE'],

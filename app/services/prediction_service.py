@@ -564,10 +564,9 @@ Example: ["AAPL", "MSFT", "TSLA"]"""
             except Exception:
                 pass
 
-        # 3) Fallback: find ticker-like tokens in plain text
-        token_matches = re.findall(r'\b[A-Z]{1,6}\b', text.upper())
-        result = normalize(token_matches)
-        return result
+        # Do not token-scan plain prose. It over-extracts words like "I" and "CANNOT"
+        # from refusal/error text and pollutes discovery with non-symbols.
+        return []
 
     def generate_prediction(self, symbol: str, stock_data: Dict, provider_name: Optional[str] = None) -> Optional[Dict]:
         """

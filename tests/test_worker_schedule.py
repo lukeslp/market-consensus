@@ -206,6 +206,39 @@ def test_discovery_includes_configured_crypto(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_recover_interrupted_cycles_marks_active_as_failed(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker_module, 'StockService', _DummyStockService)
+    monkeypatch.setattr(worker_module, 'PredictionService', _DummyPredictionService)
+
+    db_path = str(tmp_path / 'recover_cycles.db')
+    config = {
+        'DB_PATH': db_path,
+        'MARKET_TIMEZONE': 'America/New_York',
+        'USE_NYSE_CALENDAR': False,
+        'MARKET_OPEN_HOUR': 9,
+        'MARKET_OPEN_MINUTE': 30,
+        'MARKET_CLOSE_HOUR': 16,
+        'MARKET_CLOSE_MINUTE': 0,
+        'NYSE_EARLY_CLOSE_HOUR': 13,
+        'NYSE_EARLY_CLOSE_MINUTE': 0,
+        'MARKET_OPEN_INTERVAL_SECONDS': 1800,
+        'OVERNIGHT_CHECK_TIMES': '20:00,06:00',
+        'OVERNIGHT_LOOKAHEAD_HOURS': 18,
+        'SCHEDULE_POLL_SECONDS': 20,
+    }
+
+    db = ForesightDB(db_path)
+    first = db.create_cycle()
+    second = db.create_cycle()
+
+    worker = worker_module.PredictionWorker(config)
+    worker._recover_interrupted_cycles()
+
+    assert db.get_cycle(first)['status'] == 'failed'
+    assert db.get_cycle(second)['status'] == 'failed'
+
+
+@pytest.mark.unit
 def test_process_stock_continues_after_provider_failure(monkeypatch):
     class _StockServiceForProcess:
         @staticmethod
@@ -395,3 +428,108 @@ def test_cycle_blocklist_skips_rate_limited_provider(monkeypatch):
 
     cohere_calls = [call for call in worker.prediction_service.calls if call[1] == 'cohere']
     assert len(cohere_calls) == 1
+
+
+@pytest.mark.unit
+def test_bootstrap_cycle_blocklist_from_runtime(monkeypatch):
+    class _StockServiceForBootstrap:
+        pass
+
+    class _PredictionServiceForBootstrap:
+        def __init__(self, _config):
+            pass
+
+        @staticmethod
+        def get_provider_runtime_status():
+            return {
+                'cohere': {
+                    'healthy': False,
+                    'last_error': 'status_code: 429 trial key limit reached',
+                    'last_failed_at': '2026-02-18T18:31:41'
+                },
+                'gemini': {
+                    'healthy': False,
+                    'last_error': 'socket timeout',
+                    'last_failed_at': '2026-02-18T18:31:42'
+                },
+                'xai': {
+                    'healthy': True,
+                    'last_error': None,
+                    'last_failed_at': None
+                }
+            }
+
+    monkeypatch.setattr(worker_module, 'StockService', _StockServiceForBootstrap)
+    monkeypatch.setattr(worker_module, 'PredictionService', _PredictionServiceForBootstrap)
+
+    config = {
+        'DB_PATH': '/tmp/test_foresight_bootstrap_blocklist.db',
+        'MARKET_TIMEZONE': 'America/New_York',
+        'USE_NYSE_CALENDAR': False,
+        'MARKET_OPEN_HOUR': 9,
+        'MARKET_OPEN_MINUTE': 30,
+        'MARKET_CLOSE_HOUR': 16,
+        'MARKET_CLOSE_MINUTE': 0,
+        'NYSE_EARLY_CLOSE_HOUR': 13,
+        'NYSE_EARLY_CLOSE_MINUTE': 0,
+        'MARKET_OPEN_INTERVAL_SECONDS': 1800,
+        'OVERNIGHT_CHECK_TIMES': '20:00,06:00',
+        'OVERNIGHT_LOOKAHEAD_HOURS': 18,
+        'SCHEDULE_POLL_SECONDS': 20,
+    }
+
+    worker = worker_module.PredictionWorker(config)
+    blocklist = worker._bootstrap_cycle_blocklist(['xai', 'gemini', 'cohere'])
+
+    assert blocklist == {'cohere'}
+
+
+@pytest.mark.unit
+def test_cluster_status_uses_fresh_heartbeat(schedule_worker, monkeypatch):
+    monkeypatch.setattr(
+        schedule_worker,
+        '_read_heartbeat',
+        lambda: {
+            'fresh': True,
+            'age_seconds': 2.5,
+            'pid': 4321,
+            'running': True,
+            'alive': True,
+            'current_cycle_id': 987,
+            'last_cycle_time': 123.45,
+            'total_cycles_completed': 12,
+            'next_scheduled_run': '2026-02-19T09:30:00-05:00',
+            'next_scheduled_reason': 'market_open',
+        }
+    )
+
+    status = schedule_worker.get_cluster_status()
+
+    assert status['status_source'] == 'heartbeat'
+    assert status['running'] is True
+    assert status['alive'] is True
+    assert status['current_cycle_id'] == 987
+    assert status['scheduler_pid'] == 4321
+    assert status['heartbeat_fresh'] is True
+
+
+@pytest.mark.unit
+def test_cluster_status_falls_back_to_local_when_stale(schedule_worker, monkeypatch):
+    monkeypatch.setattr(
+        schedule_worker,
+        '_read_heartbeat',
+        lambda: {
+            'fresh': False,
+            'age_seconds': 999.0,
+            'pid': 4321,
+            'running': True,
+            'alive': True,
+        }
+    )
+
+    status = schedule_worker.get_cluster_status()
+
+    assert status['status_source'] == 'local'
+    assert status['running'] == status['local_running']
+    assert status['alive'] == status['local_alive']
+    assert status['heartbeat_fresh'] is False
