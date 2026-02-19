@@ -764,6 +764,32 @@ class ForesightDB:
                 results.append(result)
             return results
 
+    def get_latest_event_id(self) -> int:
+        """Return the highest event ID currently in the table (0 if empty)."""
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT MAX(id) FROM events").fetchone()
+            return row[0] if row and row[0] is not None else 0
+
+    def get_events_after(self, after_id: int = 0, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get events with id > after_id for cursor-based SSE streaming.
+
+        Safe for concurrent readers — never marks events as processed,
+        so multiple browser tabs each track their own cursor.
+        """
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT * FROM events
+                WHERE id > ?
+                ORDER BY id ASC
+                LIMIT ?
+            """, (after_id, limit)).fetchall()
+            results = []
+            for row in rows:
+                result = dict(row)
+                result['data'] = json.loads(result['data'])
+                results.append(result)
+            return results
+
     def mark_events_processed(self, event_ids: List[int]) -> bool:
         """Mark events as processed"""
         if not event_ids:
