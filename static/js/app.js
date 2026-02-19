@@ -121,7 +121,7 @@ class ForesightDashboard {
 
   async bootstrap() {
     await this.reload();
-    await this.loadProviderHealth();
+    await Promise.all([this.loadProviderHealth(), this.loadHistory()]);
     this.providerHealthTimer = setInterval(() => this.loadProviderHealth(), 15000);
     this.connectStream();
   }
@@ -197,6 +197,44 @@ class ForesightDashboard {
       set('stat-stocks', Number(stats.total_stocks ?? 0).toLocaleString());
     } catch (err) {
       this.toast('Failed to load stats');
+    }
+  }
+
+  async loadHistory() {
+    const host = document.getElementById('cycle-history');
+    if (!host) return;
+
+    try {
+      const response = await fetch(`${API_ROOT}api/history?per_page=8`);
+      const payload = await response.json();
+      const cycles = payload?.cycles || [];
+
+      if (!cycles.length) {
+        host.innerHTML = '<p class="provider-health-empty">No completed cycles yet.</p>';
+        return;
+      }
+
+      host.innerHTML = cycles.map((c) => {
+        const started = c.start_time ? new Date(c.start_time).toLocaleString([], {
+          month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }) : '--';
+        const status = c.status || 'unknown';
+        const preds = Number(c.predictions_made || 0);
+        const stocks = Number(c.stocks_discovered || 0);
+        return `
+          <article class="cycle-history-item">
+            <div>
+              <span class="ch-id">#${c.id}</span>
+              <span class="ch-time"> ${started}</span>
+              <div class="ch-count">${stocks} stocks · ${preds} predictions</div>
+            </div>
+            <span class="ch-status ${status}">${status}</span>
+          </article>
+        `;
+      }).join('');
+    } catch (err) {
+      host.innerHTML = '<p class="provider-health-empty">History unavailable.</p>';
     }
   }
 
@@ -355,6 +393,7 @@ class ForesightDashboard {
       window.resetPhases?.();
       this.toast('Prediction cycle completed');
       this.reload();
+      this.loadHistory();
       return;
     }
 

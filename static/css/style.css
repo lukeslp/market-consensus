@@ -392,3 +392,33 @@ body {
   .metric { border-right: 0; border-bottom: 1px solid var(--line); }
   .phase-ladder { grid-template-columns: 1fr 1fr; }
 }
+
+/* Cycle History */
+.cycle-history { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.cycle-history-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.cycle-history-item .ch-id { color: var(--muted); }
+.cycle-history-item .ch-time { color: var(--ink); }
+.cycle-history-item .ch-count { color: var(--muted); font-size: 0.7rem; }
+
+.ch-status {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ch-status.completed { background: rgba(46,204,159,0.15); color: var(--up); }
+.ch-status.failed { background: rgba(255,107,107,0.15); color: var(--down); }
+.ch-status.active { background: var(--accent-soft); color: var(--accent); }
