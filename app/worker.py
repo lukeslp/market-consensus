@@ -19,16 +19,16 @@ logger = logging.getLogger(__name__)
 
 class PredictionWorker:
     """Background worker that executes prediction cycles on a schedule"""
-    FULL_PROVIDER_ORDER = ['xai', 'gemini', 'anthropic', 'openai', 'perplexity', 'mistral', 'cohere', 'huggingface']
+    FULL_PROVIDER_ORDER = ['anthropic', 'openai', 'gemini', 'xai', 'perplexity', 'mistral', 'cohere', 'huggingface']
     PROVIDER_STAGE = {
-        'xai': 'core',
-        'gemini': 'core',
-        'anthropic': 'join',
-        'openai': 'join',
-        'perplexity': 'join',
-        'mistral': 'side',
-        'cohere': 'side',
-        'huggingface': 'side',
+        'anthropic':   'premium',
+        'openai':      'premium',
+        'gemini':      'premium',
+        'xai':         'mid',
+        'perplexity':  'standard',
+        'mistral':     'standard',
+        'cohere':      'standard',
+        'huggingface': 'standard',
     }
 
     def __init__(self, config: Dict):
@@ -400,13 +400,13 @@ class PredictionWorker:
 
     def _provider_groups_for_order(self, provider_order: List[str]) -> List[Tuple[str, List[str]]]:
         """Build ordered provider groups for council debate loops."""
-        grouped: Dict[str, List[str]] = {'core': [], 'join': [], 'side': []}
+        grouped: Dict[str, List[str]] = {'premium': [], 'mid': [], 'standard': []}
         for provider in provider_order:
             stage = self.PROVIDER_STAGE.get(provider)
             if not stage:
                 continue
             grouped[stage].append(provider)
-        return [(stage, grouped[stage]) for stage in ('core', 'join', 'side') if grouped[stage]]
+        return [(stage, grouped[stage]) for stage in ('premium', 'mid', 'standard') if grouped[stage]]
 
     def _observed_fixed_holiday(self, day: date_cls) -> date_cls:
         """Observed date for fixed-date NYSE holidays."""

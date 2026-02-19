@@ -152,26 +152,24 @@ def health_providers():
         service = PredictionService(current_app.config)
     runtime_status = service.get_provider_runtime_status()
 
+    provider_order = current_app.config.get(
+        'PROVIDER_ORDER',
+        ['anthropic', 'openai', 'gemini', 'xai', 'perplexity', 'mistral', 'huggingface', 'cohere']
+    )
+    provider_weights = current_app.config.get('PROVIDER_WEIGHTS', {})
+
     providers_status = {}
-    for role, provider_name in current_app.config['PROVIDERS'].items():
+    for provider_name in provider_order:
         runtime = runtime_status.get(provider_name, {})
-        if role in service.providers:
-            provider = service.providers[role]
-            providers_status[role] = {
-                'status': 'configured' if runtime.get('healthy', True) else 'error',
-                'provider': provider_name,
-                'type': type(provider).__name__,
-                'last_error': runtime.get('last_error'),
-                'last_failed_at': runtime.get('last_failed_at')
-            }
-        else:
-            providers_status[role] = {
-                'status': 'error',
-                'provider': provider_name,
-                'error': 'Failed to initialize',
-                'last_error': runtime.get('last_error'),
-                'last_failed_at': runtime.get('last_failed_at')
-            }
+        initialized = provider_name in service.providers
+        providers_status[provider_name] = {
+            'status': 'configured' if (initialized and runtime.get('healthy', True)) else 'error',
+            'provider': provider_name,
+            'weight': provider_weights.get(provider_name, 1.0),
+            'type': type(service.providers[provider_name]).__name__ if initialized else 'Not initialized',
+            'last_error': runtime.get('last_error'),
+            'last_failed_at': runtime.get('last_failed_at')
+        }
 
     configured_healthy = all(p.get('status') == 'configured' for p in providers_status.values())
     runtime_healthy = all(v.get('healthy', True) for v in runtime_status.values())
