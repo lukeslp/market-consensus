@@ -200,12 +200,30 @@ class ForesightDB:
             return cycle_id
 
     def get_current_cycle(self) -> Optional[Dict[str, Any]]:
-        """Get the currently active cycle"""
+        """Get the active cycle, or fall back to the most recent completed cycle."""
         with self.get_connection() as conn:
             row = conn.execute(
                 "SELECT * FROM cycles WHERE status = 'active' ORDER BY start_time DESC LIMIT 1"
             ).fetchone()
-            return dict(row) if row else None
+            if row:
+                return dict(row)
+            # No active cycle — return the most recent completed/failed one for display
+            row = conn.execute(
+                "SELECT * FROM cycles WHERE status IN ('completed', 'failed') ORDER BY start_time DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                result = dict(row)
+                result['_is_historical'] = True
+                return result
+            return None
+
+    def set_stocks_discovered(self, cycle_id: int, count: int) -> None:
+        """Update stocks_discovered count without triggering a cycle_end event."""
+        with self.get_connection() as conn:
+            conn.execute(
+                "UPDATE cycles SET stocks_discovered = ? WHERE id = ?",
+                (count, cycle_id)
+            )
 
     def get_cycle(self, cycle_id: int) -> Optional[Dict[str, Any]]:
         """Get cycle by ID"""

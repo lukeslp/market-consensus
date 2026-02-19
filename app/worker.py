@@ -728,6 +728,7 @@ class PredictionWorker:
             # Phase 1: Discover stocks
             logger.info('Phase 1: Discovering stocks')
             symbols = self._discover_stocks(db, cycle_id, provider_order=provider_order)
+            db.set_stocks_discovered(cycle_id, len(symbols))
 
             if not symbols:
                 logger.warning('No stocks discovered, completing cycle')
