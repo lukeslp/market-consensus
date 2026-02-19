@@ -29,8 +29,29 @@ def current():
             'predictions': []
         }), 200
 
-    # Get predictions for this cycle
-    predictions = db.get_predictions_for_cycle(cycle['id'])
+    # Get predictions for this cycle, then reduce to one row per ticker.
+    # Priority: *-consensus > council-weighted > highest-confidence individual.
+    all_predictions = db.get_predictions_for_cycle(cycle['id'])
+    by_ticker = {}
+    for p in all_predictions:
+        ticker = p.get('ticker')
+        if not ticker:
+            continue
+        existing = by_ticker.get(ticker)
+        provider = p.get('provider', '')
+        if existing is None:
+            by_ticker[ticker] = p
+        elif provider.endswith('-consensus'):
+            by_ticker[ticker] = p
+        elif provider == 'council-weighted' and not existing.get('provider', '').endswith('-consensus'):
+            by_ticker[ticker] = p
+        elif (
+            not existing.get('provider', '').endswith('-consensus')
+            and existing.get('provider') != 'council-weighted'
+            and (p.get('confidence') or 0) > (existing.get('confidence') or 0)
+        ):
+            by_ticker[ticker] = p
+    predictions = list(by_ticker.values())
 
     return jsonify({
         'cycle': cycle,

@@ -96,14 +96,20 @@ class StockGrid {
     merged.select('.accuracy-track').attr('fill', 'rgba(255,255,255,0.08)');
     merged.select('.accuracy-fill')
       .attr('fill', (d) => {
-        if (!Number.isFinite(+d.accuracy)) return this.colors.flat;
-        if (+d.accuracy >= 70) return this.colors.up;
-        if (+d.accuracy >= 50) return '#f3b34c';
-        return this.colors.down;
+        if (Number.isFinite(+d.accuracy)) {
+          if (+d.accuracy >= 0.7) return this.colors.up;
+          if (+d.accuracy >= 0.5) return '#f3b34c';
+          return this.colors.down;
+        }
+        // Not yet evaluated — show confidence as amber placeholder
+        return 'rgba(243,179,76,0.45)';
       })
       .transition().duration(420)
       .attr('width', (d) => {
-        const pct = Math.max(0, Math.min(100, +d.accuracy || 0));
+        const val = Number.isFinite(+d.accuracy)
+          ? +d.accuracy * 100
+          : Number.isFinite(+d.confidence) ? +d.confidence * 100 : 0;
+        const pct = Math.max(0, Math.min(100, val));
         return (this.options.tileW - 20) * (pct / 100);
       });
 
