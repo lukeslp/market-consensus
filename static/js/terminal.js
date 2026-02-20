@@ -523,7 +523,7 @@
   function renderProviders(health) {
     const container = $('#provider-list');
     if (!health || !health.providers) {
-      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">No provider data</div>';
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">Provider health will appear after a cycle runs</div>';
       return;
     }
 
@@ -545,7 +545,7 @@
   function renderAccuracy(stats) {
     const container = $('#accuracy-list');
     if (!stats || !stats.by_provider || stats.by_provider.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">No accuracy data yet</div>';
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">Predictions are evaluated after their target window expires (30min-2.5hr). Accuracy data will appear here.</div>';
       return;
     }
 
@@ -554,7 +554,7 @@
       .sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0));
 
     if (sorted.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">No evaluated predictions yet</div>';
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">Predictions are evaluated after their target window expires (30min-2.5hr). Accuracy data will appear here.</div>';
       return;
     }
 
@@ -573,7 +573,7 @@
   function renderCycles(history) {
     const container = $('#cycle-list');
     if (!history || !history.cycles || history.cycles.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">No cycles yet</div>';
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">No cycles yet &mdash; press &#9654; to start one</div>';
       return;
     }
 
