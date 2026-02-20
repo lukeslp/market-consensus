@@ -63,7 +63,7 @@
       const health  = results[2].status === 'fulfilled' ? results[2].value : null;
       const history = results[3].status === 'fulfilled' ? results[3].value : null;
 
-      if (current) { renderPredictions(current); renderMarketDirection(current); updatePhase(current); }
+      if (current) { renderPredictions(current); renderMarketDirection(current); updatePhase(current); updateFeedFromData(current); }
       if (stats)   { renderStats(stats); renderAccuracy(stats); }
       if (health)  { renderProviders(health); }
       if (history)  { renderCycles(history); }
@@ -483,6 +483,25 @@
     }
 
     $('#detail-body').innerHTML = html;
+  }
+
+  // ── Feed from data (on page load) ─────────────────────────
+  function updateFeedFromData(data) {
+    if (!data || !data.predictions || data.predictions.length === 0) return;
+    if (feedMessages.length > 0) return; // SSE already populated
+
+    const cycle = data.cycle;
+    const preds = data.predictions.filter(p => !(p.ticker || '').startsWith('MARKET-'));
+    const hasActive = cycle && cycle.status === 'active';
+
+    if (hasActive && preds.length > 0) {
+      const latest = preds[preds.length - 1];
+      const dir = (latest.predicted_direction || '').toUpperCase();
+      const text = `${latest.ticker} → ${dir} (${prettyProvider(latest.provider || '')}) · ${preds.length} predictions this cycle`;
+      $('#feed-track').textContent = text;
+    } else if (preds.length > 0) {
+      $('#feed-track').textContent = `${preds.length} predictions · Cycle #${cycle ? cycle.id : '?'} ${cycle ? cycle.status : ''}`;
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────
