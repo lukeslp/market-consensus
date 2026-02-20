@@ -1291,6 +1291,19 @@ class PredictionWorker:
         except Exception as e:
             logger.error(f'Error processing stock {symbol}: {e}', exc_info=True)
 
+    def _call_provider_for_stock(
+        self,
+        provider_name: str,
+        symbol: str,
+        stock_data: Dict
+    ) -> Optional[Dict]:
+        """Call a single provider for a stock — designed for thread isolation."""
+        return self.prediction_service.generate_prediction_swarm(
+            symbol,
+            stock_data,
+            provider_name=provider_name
+        )
+
     @staticmethod
     def _should_block_provider(error_text: str) -> bool:
         """Return True for hard-failure classes we should skip for the rest of this cycle."""
