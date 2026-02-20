@@ -52,21 +52,29 @@
 
   async function loadAll() {
     try {
-      const [current, stats, health, history] = await Promise.all([
+      const results = await Promise.allSettled([
         apiFetch('/current'),
         apiFetch('/stats'),
         apiFetch('/health/providers'),
         apiFetch('/history?per_page=10'),
       ]);
-      renderPredictions(current);
-      renderStats(stats);
-      renderProviders(health);
-      renderAccuracy(stats);
-      renderCycles(history);
-      renderMarketDirection(current);
-      updatePhase(current);
+      const current = results[0].status === 'fulfilled' ? results[0].value : null;
+      const stats   = results[1].status === 'fulfilled' ? results[1].value : null;
+      const health  = results[2].status === 'fulfilled' ? results[2].value : null;
+      const history = results[3].status === 'fulfilled' ? results[3].value : null;
+
+      if (current) { renderPredictions(current); renderMarketDirection(current); updatePhase(current); }
+      if (stats)   { renderStats(stats); renderAccuracy(stats); }
+      if (health)  { renderProviders(health); }
+      if (history)  { renderCycles(history); }
+
+      // Show error if nothing loaded
+      if (!current && !stats) {
+        $('#stock-tbody').innerHTML = '<tr class="empty-row"><td colspan="5">API connection error — retrying...</td></tr>';
+      }
     } catch (e) {
       console.error('Load error:', e);
+      $('#stock-tbody').innerHTML = '<tr class="empty-row"><td colspan="5">Error: ' + e.message + '</td></tr>';
     }
   }
 
