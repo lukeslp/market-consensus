@@ -56,13 +56,19 @@ class OllamaProvider(BaseLLMProvider):
         # Optional Bearer token for Ollama Cloud (api.ollama.com)
         _raw_key = api_key if (api_key and api_key != "local") else os.environ.get('OLLAMA_API_KEY')
         self._auth_headers = {'Authorization': f'Bearer {_raw_key}'} if _raw_key else {}
+        self._is_cloud = 'ollama.com' in self.host
 
         # Check if Ollama server is running
         self.available = self._check_availability()
         if self.available:
-            self.cached_models = self._fetch_models()
-            logger.info(f"Ollama provider initialized with host: {self.host}")
-            logger.info(f"Available models: {', '.join([m['id'] for m in self.cached_models])}")
+            if not self._is_cloud:
+                # Local: fetch full model list with details
+                self.cached_models = self._fetch_models()
+                logger.info(f"Ollama provider initialized with host: {self.host}")
+                logger.info(f"Available models: {', '.join([m['id'] for m in self.cached_models])}")
+            else:
+                # Cloud: skip slow per-model detail fetch, just use configured model
+                logger.info(f"Ollama Cloud provider initialized at {self.host}")
 
             # Set default model if not provided
             if not self.model and self.cached_models:
