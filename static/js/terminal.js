@@ -1,5 +1,5 @@
 /* ============================================================
-   FORESIGHT TERMINAL — Unified Application Script
+   CONSENSUS TERMINAL — Unified Application Script
    ============================================================ */
 (function () {
   'use strict';
