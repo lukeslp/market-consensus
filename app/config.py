@@ -193,6 +193,7 @@ class Config:
             'perplexity': os.environ.get('MODEL_OVERRIDE_PERPLEXITY', 'sonar'),
             'openai': os.environ.get('MODEL_OVERRIDE_OPENAI', 'gpt-5-mini'),
             'huggingface': os.environ.get('MODEL_OVERRIDE_HUGGINGFACE', 'meta-llama/Llama-3.3-70B-Instruct'),
+            'ollama': os.environ.get('MODEL_OVERRIDE_OLLAMA', 'glm-5'),
         }.items() if model
     }
 
