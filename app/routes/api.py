@@ -211,8 +211,21 @@ def stream():
         yield f"retry: {sse_retry}\n\n"
         yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})}\n\n"
 
+        # Send initial state snapshot so the frontend has data immediately
+        try:
+            cycle = db.get_current_cycle()
+            if cycle:
+                snapshot = {
+                    'type': 'snapshot',
+                    'cycle': dict(cycle) if cycle else None,
+                    'timestamp': datetime.now().isoformat()
+                }
+                yield f"data: {json.dumps(snapshot)}\n\n"
+        except Exception:
+            pass  # Non-critical; frontend will fetch via REST
+
         last_heartbeat = time.time()
-        heartbeat_interval = 30
+        heartbeat_interval = 15  # 15-second heartbeat to keep connection alive
 
         while True:
             current_time = time.time()
@@ -251,6 +264,7 @@ def stream():
         headers={
             'Cache-Control': 'no-cache, no-transform',
             'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
         }
     )
 

@@ -88,9 +88,12 @@ class PredictionWorker:
             self.include_crypto = include_crypto_raw.lower() not in ('0', 'false', 'no')
         else:
             self.include_crypto = bool(include_crypto_raw)
-        self.max_crypto_symbols = max(0, int(config.get('MAX_CRYPTO_SYMBOLS', 3)))
+        self.max_crypto_symbols = max(0, int(config.get('MAX_CRYPTO_SYMBOLS', 50)))
         self.crypto_symbols = self._parse_symbol_list(config.get('CRYPTO_SYMBOLS', 'BTC-USD,ETH-USD,SOL-USD'))
-        self.crypto_symbol_set = set(self.crypto_symbols)
+        # Build the crypto set from the full watchlist so target_time logic works for all crypto
+        from .config import TOP_50_CRYPTO
+        crypto_watchlist = config.get('CRYPTO_WATCHLIST', TOP_50_CRYPTO)
+        self.crypto_symbol_set = set(s.upper() for s in crypto_watchlist) | set(self.crypto_symbols)
         self._overnight_cycles_since_full = 0
         self._nyse_holiday_cache: Dict[int, Set[date_cls]] = {}
         self._nyse_session_cache: Dict[date_cls, Optional[Tuple[datetime, datetime]]] = {}
@@ -750,14 +753,26 @@ class PredictionWorker:
                     provider_blocklist=provider_blocklist
                 )
 
-            # Phase 3: Complete cycle
+            # Phase 3: Overall market direction predictions
+            enable_market_pred = self.config.get('ENABLE_MARKET_PREDICTION', True)
+            if isinstance(enable_market_pred, str):
+                enable_market_pred = enable_market_pred.lower() not in ('0', 'false', 'no')
+            if enable_market_pred:
+                logger.info('Phase 3: Generating overall market direction predictions')
+                self._predict_market_direction(
+                    db, cycle_id, symbols,
+                    provider_order=provider_order,
+                    provider_blocklist=provider_blocklist
+                )
+
+            # Phase 4: Complete cycle
             db.complete_cycle(cycle_id)
             self.total_cycles_completed += 1
             logger.info(f'Completed prediction cycle {cycle_id} (total: {self.total_cycles_completed})')
             # Note: cycle_complete event is auto-emitted by db.complete_cycle()
             self._write_heartbeat()
 
-            # Phase 4: Evaluate any predictions whose target window has passed
+            # Phase 5: Evaluate any predictions whose target window has passed
             self._evaluate_pending_predictions(db)
 
         except Exception as e:
@@ -826,54 +841,58 @@ class PredictionWorker:
         provider_order: Optional[List[str]] = None
     ) -> list:
         """
-        Discover interesting symbols (equities + optional crypto list).
+        Build the symbol list from hardcoded watchlists (equities + crypto).
+
+        Uses the EQUITY_WATCHLIST and CRYPTO_WATCHLIST from config directly,
+        skipping the LLM discovery debate. This ensures consistent coverage
+        of the top 50 equities and top 50 crypto assets every cycle.
 
         Args:
             db: Database instance
             cycle_id: Current cycle ID
-            provider_order: Provider sequence for discovery debate.
+            provider_order: Provider sequence (unused, kept for API compat).
 
         Returns:
             List of validated symbols
         """
         try:
-            max_stocks = int(self.config['MAX_STOCKS'])
-            logger.debug(f'Calling discover_stocks_debate with max_stocks={max_stocks}')
-            weights = self._get_provider_weights(db)
-            discovered_symbols: List[str] = []
+            from .config import TOP_50_EQUITIES, TOP_50_CRYPTO
 
-            if max_stocks > 0:
-                discovered_symbols = self.prediction_service.discover_stocks_debate(
-                    count=max_stocks,
-                    provider_weights=weights,
-                    stage_order=provider_order
-                )
-            logger.debug(f'Equity discovery returned: {discovered_symbols}')
+            # Use watchlists from config (env-overridable) or fall back to module-level defaults
+            equity_watchlist = self.config.get('EQUITY_WATCHLIST', TOP_50_EQUITIES)
+            crypto_watchlist = self.config.get('CRYPTO_WATCHLIST', TOP_50_CRYPTO)
+            max_stocks = int(self.config.get('MAX_STOCKS', 50))
+            max_crypto = int(self.config.get('MAX_CRYPTO_SYMBOLS', 50))
 
             symbols: List[str] = []
             seen = set()
-            for symbol in discovered_symbols:
+
+            # Add equities from watchlist
+            for symbol in equity_watchlist[:max_stocks]:
                 key = symbol.upper()
                 if key in seen:
                     continue
                 symbols.append(key)
                 seen.add(key)
+            logger.info(f'Equity watchlist: {len(symbols)} symbols')
 
-            if self.include_crypto and self.max_crypto_symbols > 0 and self.crypto_symbols:
-                configured_crypto = self.crypto_symbols[:self.max_crypto_symbols]
-                logger.info(f'Adding configured crypto symbols for cycle: {configured_crypto}')
-                for symbol in configured_crypto:
+            # Add crypto from watchlist
+            if self.include_crypto and max_crypto > 0:
+                crypto_added = 0
+                for symbol in crypto_watchlist[:max_crypto]:
                     key = symbol.upper()
                     if key in seen:
                         continue
                     symbols.append(key)
                     seen.add(key)
+                    crypto_added += 1
+                logger.info(f'Crypto watchlist: {crypto_added} symbols')
 
             if not symbols:
-                logger.warning('Discovery returned no symbols')
+                logger.warning('Watchlists are empty, no symbols to process')
                 return []
 
-            logger.info(f'Discovered {len(symbols)} candidate symbols: {symbols}')
+            logger.info(f'Watchlist total: {len(symbols)} symbols (equities + crypto)')
 
             # Validate and add stocks to database
             valid_symbols = []
@@ -1149,3 +1168,215 @@ class PredictionWorker:
             "unexpected keyword argument 'proxies'",
         )
         return any(marker in lowered for marker in hard_failure_markers)
+
+    def _predict_market_direction(
+        self,
+        db: ForesightDB,
+        cycle_id: int,
+        symbols: List[str],
+        provider_order: Optional[List[str]] = None,
+        provider_blocklist: Optional[Set[str]] = None
+    ):
+        """
+        Generate overall market direction predictions for the crypto and equities markets.
+
+        After individual stock predictions are complete, this method:
+        1. Collects all consensus predictions from this cycle
+        2. Splits them into crypto vs equity buckets
+        3. Asks the LLM swarm to predict overall market direction for each bucket
+        4. Stores the result as a special prediction under synthetic tickers
+           MARKET-CRYPTO and MARKET-EQUITIES
+        """
+        from llm_providers import Message
+
+        if provider_order is None:
+            provider_order = self.FULL_PROVIDER_ORDER
+        if provider_blocklist is None:
+            provider_blocklist = set()
+
+        # Collect consensus predictions from this cycle
+        try:
+            with db.get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT p.predicted_direction, p.confidence, p.reasoning,
+                           s.ticker, s.name, p.initial_price
+                    FROM predictions p
+                    JOIN stocks s ON p.stock_id = s.id
+                    WHERE p.cycle_id = ?
+                      AND p.provider = 'council-swarm-consensus'
+                    ORDER BY s.ticker
+                """, (cycle_id,)).fetchall()
+        except Exception as e:
+            logger.error(f'Failed to fetch cycle predictions for market direction: {e}')
+            return
+
+        if not rows:
+            logger.warning('No consensus predictions found for market direction analysis')
+            return
+
+        # Split into crypto vs equity
+        crypto_preds = []
+        equity_preds = []
+        for row in rows:
+            entry = {
+                'ticker': row['ticker'],
+                'name': row['name'],
+                'direction': row['predicted_direction'],
+                'confidence': row['confidence'],
+                'price': row['initial_price'],
+                'reasoning': (row['reasoning'] or '')[:200],  # Truncate for prompt size
+            }
+            if row['ticker'].upper() in self.crypto_symbol_set:
+                crypto_preds.append(entry)
+            else:
+                equity_preds.append(entry)
+
+        # Generate market predictions for each bucket
+        for market_type, preds, ticker in [
+            ('Cryptocurrency', crypto_preds, 'MARKET-CRYPTO'),
+            ('Equities', equity_preds, 'MARKET-EQUITIES'),
+        ]:
+            if not preds:
+                logger.info(f'No {market_type} predictions to aggregate for market direction')
+                continue
+
+            self._generate_market_prediction(
+                db, cycle_id, market_type, preds, ticker,
+                provider_order, provider_blocklist
+            )
+
+    def _generate_market_prediction(
+        self,
+        db: ForesightDB,
+        cycle_id: int,
+        market_type: str,
+        predictions: List[Dict],
+        market_ticker: str,
+        provider_order: List[str],
+        provider_blocklist: Set[str]
+    ):
+        """Generate a single market direction prediction via swarm vote."""
+        from llm_providers import Message
+
+        # Build the summary of individual predictions
+        up_count = sum(1 for p in predictions if p['direction'] == 'up')
+        down_count = sum(1 for p in predictions if p['direction'] == 'down')
+        neutral_count = sum(1 for p in predictions if p['direction'] == 'neutral')
+
+        pred_summary = "\n".join(
+            f"  {p['ticker']} ({p['name']}): {p['direction'].upper()} "
+            f"(confidence: {p['confidence']:.2f}, price: ${p['price']:.2f})"
+            for p in predictions
+        )
+
+        prompt = f"""You are a market strategist on a hedge fund research council.
+Based on the individual stock/asset predictions below, determine the overall
+direction of the {market_type} market for the next prediction window.
+
+{market_type} Market Summary:
+- Total assets analyzed: {len(predictions)}
+- Predicted UP: {up_count}
+- Predicted DOWN: {down_count}
+- Predicted NEUTRAL: {neutral_count}
+
+Individual Predictions:
+{pred_summary}
+
+Consider the weight of large-cap vs small-cap signals, sector correlations,
+and the overall sentiment distribution. Return JSON only:
+{{
+  "prediction": "UP|DOWN|NEUTRAL",
+  "confidence": 0.0,
+  "reasoning": "Brief explanation of overall market direction call."
+}}"""
+
+        # Create or get the synthetic market stock entry
+        stock_id = db.add_stock(
+            ticker=market_ticker,
+            name=f'{market_type} Market Direction',
+            metadata={'asset_type': 'market_index', 'market_type': market_type.lower()}
+        )
+
+        weights = self._get_provider_weights(db)
+        reports = []
+        target_time = datetime.now() + timedelta(hours=2.5)
+
+        for provider_name in provider_order:
+            if provider_name in provider_blocklist:
+                continue
+            try:
+                provider = self.prediction_service._get_provider(provider_name)
+                model = self.prediction_service._resolve_model(provider_name, provider)
+                if model:
+                    provider.model = model
+
+                response = self.prediction_service._complete_with_optional_model(
+                    provider,
+                    messages=[Message(role='user', content=prompt)],
+                    model=model
+                )
+                parsed = self.prediction_service._parse_prediction_json(response.content)
+                if not parsed:
+                    continue
+
+                parsed['provider'] = provider_name
+                reports.append(parsed)
+
+                db.add_prediction(
+                    cycle_id=cycle_id,
+                    stock_id=stock_id,
+                    provider=provider_name,
+                    predicted_direction=parsed['prediction'],
+                    confidence=parsed['confidence'],
+                    initial_price=0.0,  # No single price for market index
+                    target_time=target_time,
+                    reasoning=f"[market-{market_type.lower()}] {parsed.get('reasoning', '')}"
+                )
+                self.prediction_service._mark_provider_success(provider_name)
+                logger.info(
+                    f'[{market_ticker}] {provider_name}: {parsed["prediction"]} '
+                    f'(confidence: {parsed["confidence"]:.2f})'
+                )
+            except Exception as e:
+                logger.warning(f'[{market_ticker}] Provider {provider_name} failed: {e}')
+                self.prediction_service._mark_provider_failure(provider_name, e)
+
+        if not reports:
+            logger.warning(f'No market direction reports generated for {market_ticker}')
+            return
+
+        # Weighted vote across all provider reports
+        vote_totals = {'up': 0.0, 'down': 0.0, 'neutral': 0.0}
+        for report in reports:
+            direction = report['prediction'] if report['prediction'] in vote_totals else 'neutral'
+            conf = float(report.get('confidence') or 0.5)
+            w = float(weights.get(report['provider'], 1.0))
+            vote_totals[direction] += max(0.05, conf) * w
+
+        winning = max(vote_totals.items(), key=lambda x: x[1])[0]
+        total_score = sum(vote_totals.values()) or 1.0
+        consensus_conf = vote_totals[winning] / total_score
+
+        db.add_prediction(
+            cycle_id=cycle_id,
+            stock_id=stock_id,
+            provider='market-consensus',
+            predicted_direction=winning,
+            confidence=consensus_conf,
+            initial_price=0.0,
+            target_time=target_time,
+            reasoning=(
+                f"{market_type} market consensus: {winning.upper()} ({consensus_conf:.2f}). "
+                f"Based on {len(predictions)} individual predictions "
+                f"(UP:{up_count} DOWN:{down_count} NEUTRAL:{neutral_count}). "
+                f"Vote totals: up={vote_totals['up']:.2f}, down={vote_totals['down']:.2f}, "
+                f"neutral={vote_totals['neutral']:.2f}"
+            )
+        )
+
+        logger.info(
+            f'{market_type} market direction: {winning.upper()} '
+            f'(confidence: {consensus_conf:.2f}, '
+            f'votes: up={vote_totals["up"]:.2f} down={vote_totals["down"]:.2f} '
+            f'neutral={vote_totals["neutral"]:.2f})'
+        )

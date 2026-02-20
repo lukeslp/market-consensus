@@ -7,6 +7,114 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
 
+# ── Top 50 Crypto Tickers (yfinance format) ──────────────────────────────────
+TOP_50_CRYPTO = [
+    'BTC-USD',   # Bitcoin
+    'ETH-USD',   # Ethereum
+    'XRP-USD',   # XRP
+    'SOL-USD',   # Solana
+    'BNB-USD',   # Binance Coin
+    'ADA-USD',   # Cardano
+    'DOGE-USD',  # Dogecoin
+    'TRX-USD',   # TRON
+    'AVAX-USD',  # Avalanche
+    'LINK-USD',  # Chainlink
+    'DOT-USD',   # Polkadot
+    'SHIB-USD',  # Shiba Inu
+    'TON11419-USD',  # Toncoin
+    'XLM-USD',   # Stellar
+    'SUI20947-USD',  # Sui
+    'HBAR-USD',  # Hedera
+    'BCH-USD',   # Bitcoin Cash
+    'LTC-USD',   # Litecoin
+    'ATOM-USD',  # Cosmos
+    'UNI7083-USD',  # Uniswap
+    'NEAR-USD',  # NEAR Protocol
+    'APT21794-USD',  # Aptos
+    'MATIC-USD', # Polygon
+    'FIL-USD',   # Filecoin
+    'ARB11841-USD',  # Arbitrum
+    'OP-USD',    # Optimism
+    'ALGO-USD',  # Algorand
+    'FTM-USD',   # Fantom
+    'AAVE-USD',  # Aave
+    'MKR-USD',   # Maker
+    'GRT6719-USD',  # The Graph
+    'RENDER-USD',  # Render
+    'INJ-USD',   # Injective
+    'IMX10603-USD',  # Immutable
+    'STX4847-USD',  # Stacks
+    'THETA-USD', # Theta Network
+    'SAND-USD',  # The Sandbox
+    'MANA-USD',  # Decentraland
+    'AXS-USD',   # Axie Infinity
+    'FLOW-USD',  # Flow
+    'EOS-USD',   # EOS
+    'XTZ-USD',   # Tezos
+    'CRV-USD',   # Curve DAO
+    'COMP-USD',  # Compound
+    'KAVA-USD',  # Kava
+    'ZEC-USD',   # Zcash
+    'DASH-USD',  # Dash
+    'ENJ-USD',   # Enjin Coin
+    'CHZ-USD',   # Chiliz
+    'ONE-USD',   # Harmony
+]
+
+# ── Top 50 Equity Tickers ────────────────────────────────────────────────────
+TOP_50_EQUITIES = [
+    'AAPL',   # Apple
+    'MSFT',   # Microsoft
+    'NVDA',   # NVIDIA
+    'AMZN',   # Amazon
+    'GOOGL',  # Alphabet (A)
+    'META',   # Meta Platforms
+    'TSLA',   # Tesla
+    'BRK-B',  # Berkshire Hathaway (B)
+    'AVGO',   # Broadcom
+    'JPM',    # JPMorgan Chase
+    'LLY',    # Eli Lilly
+    'V',      # Visa
+    'UNH',    # UnitedHealth
+    'MA',     # Mastercard
+    'XOM',    # Exxon Mobil
+    'COST',   # Costco
+    'HD',     # Home Depot
+    'PG',     # Procter & Gamble
+    'JNJ',    # Johnson & Johnson
+    'ABBV',   # AbbVie
+    'WMT',    # Walmart
+    'NFLX',   # Netflix
+    'CRM',    # Salesforce
+    'BAC',    # Bank of America
+    'ORCL',   # Oracle
+    'CVX',    # Chevron
+    'MRK',    # Merck
+    'KO',     # Coca-Cola
+    'AMD',    # AMD
+    'PEP',    # PepsiCo
+    'TMO',    # Thermo Fisher
+    'LIN',    # Linde
+    'CSCO',   # Cisco
+    'ACN',    # Accenture
+    'ADBE',   # Adobe
+    'MCD',    # McDonald's
+    'ABT',    # Abbott Labs
+    'WFC',    # Wells Fargo
+    'DHR',    # Danaher
+    'TXN',    # Texas Instruments
+    'PM',     # Philip Morris
+    'NEE',    # NextEra Energy
+    'INTC',   # Intel
+    'DIS',    # Disney
+    'CMCSA',  # Comcast
+    'VZ',     # Verizon
+    'QCOM',   # Qualcomm
+    'AMGN',   # Amgen
+    'INTU',   # Intuit
+    'AMAT',   # Applied Materials
+]
+
 
 class Config:
     """Base configuration"""
@@ -108,12 +216,26 @@ class Config:
     # SSE streaming
     SSE_RETRY = int(os.environ.get('SSE_RETRY', 3000))  # milliseconds
 
+    # ── Watchlists ────────────────────────────────────────────────────────────
+    # Hardcoded top-50 lists. Discovery debate is skipped; these are used directly.
+    # Override with comma-separated env vars to customise.
+    EQUITY_WATCHLIST = [s.strip() for s in os.environ.get(
+        'EQUITY_WATCHLIST', ','.join(TOP_50_EQUITIES)
+    ).split(',') if s.strip()]
+
+    CRYPTO_WATCHLIST = [s.strip() for s in os.environ.get(
+        'CRYPTO_WATCHLIST', ','.join(TOP_50_CRYPTO)
+    ).split(',') if s.strip()]
+
     # Stock data
-    MAX_STOCKS = int(os.environ.get('MAX_STOCKS', 10))  # Max stocks to track per cycle
+    MAX_STOCKS = int(os.environ.get('MAX_STOCKS', 50))  # Max equities per cycle
     LOOKBACK_DAYS = int(os.environ.get('LOOKBACK_DAYS', 30))  # Historical data to fetch
     INCLUDE_CRYPTO = os.environ.get('INCLUDE_CRYPTO', 'true').lower() not in ('0', 'false', 'no')
-    MAX_CRYPTO_SYMBOLS = int(os.environ.get('MAX_CRYPTO_SYMBOLS', 3))
-    CRYPTO_SYMBOLS = os.environ.get('CRYPTO_SYMBOLS', 'BTC-USD,ETH-USD,SOL-USD')
+    MAX_CRYPTO_SYMBOLS = int(os.environ.get('MAX_CRYPTO_SYMBOLS', 50))
+    CRYPTO_SYMBOLS = os.environ.get('CRYPTO_SYMBOLS', ','.join(TOP_50_CRYPTO))
+
+    # Market direction prediction — aggregate UP/DOWN call for each market
+    ENABLE_MARKET_PREDICTION = os.environ.get('ENABLE_MARKET_PREDICTION', 'true').lower() not in ('0', 'false', 'no')
 
 
 class DevelopmentConfig(Config):
