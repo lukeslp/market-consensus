@@ -72,9 +72,30 @@ class ForesightDashboard {
   }
 
   mountVisuals() {
+    // Responsive column count based on screen width
+    const getColumnCount = () => {
+      const width = window.innerWidth;
+      if (width < 600) return 3;  // Mobile: 3 columns
+      if (width < 900) return 4;  // Tablet: 4 columns
+      if (width < 1200) return 6; // Small desktop: 6 columns
+      return 8;                    // Large desktop: 8 columns
+    };
+
     this.grid = new window.StockGrid('#grid-stage', {
-      columns: 10,
+      columns: getColumnCount(),
       onTileClick: (stock) => this.selectStock(stock.symbol)
+    });
+
+    // Update columns on resize
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (this.grid) {
+          this.grid.options.columns = getColumnCount();
+          this.grid.update(this.grid.data);
+        }
+      }, 250);
     });
 
     const detailHost = document.getElementById('detail-visual');
@@ -328,13 +349,26 @@ class ForesightDashboard {
         return;
       }
 
+      const PROVIDER_MODELS = {
+        anthropic: 'claude-sonnet-4-6',
+        openai: 'gpt-5.2',
+        gemini: 'gemini-2.5-flash',
+        xai: 'grok-4-1-fast-reasoning',
+        perplexity: 'sonar-pro',
+        mistral: 'mistral-large-latest',
+        cohere: 'command-a-03-2025',
+        huggingface: 'Llama-3.3-70B'
+      };
+
       host.innerHTML = entries.map((item) => {
         const failed = item.status !== 'configured';
         const name = (item.key || 'unknown').toUpperCase();
+        const model = PROVIDER_MODELS[(item.key || '').toLowerCase()] || '';
         const state = failed ? 'FAIL' : 'OK';
         const stateClass = failed ? 'fail' : 'ok';
         const link = PROVIDER_LINKS[(item.key || '').toLowerCase()];
         const { label, linkText } = failed ? classifyProviderError(item.last_error) : {};
+        const modelHtml = model && !failed ? `<p class="provider-model">${model}</p>` : '';
         const errHtml = failed
           ? `<p class="provider-error">${label}${link ? ` <a href="${link}" target="_blank" rel="noopener noreferrer" class="provider-err-link">${linkText}</a>` : ''}</p>`
           : '';
@@ -344,6 +378,7 @@ class ForesightDashboard {
               <span class="provider-name">${name}</span>
               <span class="provider-state ${stateClass}">${state}</span>
             </div>
+            ${modelHtml}
             ${errHtml}
           </article>
         `;

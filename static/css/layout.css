@@ -59,6 +59,6 @@
   }
 
   .grid-stage {
-    min-height: 460px;
+    min-height: auto;
   }
 }

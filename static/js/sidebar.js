@@ -85,7 +85,7 @@ class Sidebar {
 
     merged.select('.row-bg').attr('fill', 'rgba(255,255,255,0.02)').attr('stroke', this.colors.line);
     merged.select('.provider-name').attr('fill', this.colors.ink).attr('font-size', 12).attr('font-family', 'var(--font-display)').text((d, i) => `#${i + 1} ${this.prettyProvider(d.provider)}`);
-    merged.select('.provider-meta').attr('fill', this.colors.muted).attr('font-size', 10).attr('font-family', 'var(--font-data)').text((d) => `${d.total_predictions || 0} predictions`);
+    merged.select('.provider-meta').attr('fill', this.colors.muted).attr('font-size', 10).attr('font-family', 'var(--font-data)').text((d) => this.getProviderModel(d.provider) || `${d.total_predictions || 0} predictions`);
     merged.select('.accuracy-track').attr('fill', 'rgba(255,255,255,0.08)');
     merged.select('.accuracy-fill')
       .attr('fill', (d) => this.accuracyColor(+d.accuracy_rate || 0))
@@ -110,8 +110,31 @@ class Sidebar {
   }
 
   prettyProvider(raw = '') {
-    const map = { xai: 'xAI', anthropic: 'Anthropic', gemini: 'Gemini', mistral: 'Mistral', perplexity: 'Perplexity', openai: 'OpenAI' };
+    const map = { 
+      xai: 'xAI', 
+      anthropic: 'Anthropic', 
+      gemini: 'Gemini', 
+      mistral: 'Mistral', 
+      perplexity: 'Perplexity', 
+      openai: 'OpenAI',
+      cohere: 'Cohere',
+      huggingface: 'HuggingFace'
+    };
     return map[raw] || `${raw}`;
+  }
+
+  getProviderModel(provider) {
+    const models = {
+      anthropic: 'claude-sonnet-4-6',
+      openai: 'gpt-5.2',
+      gemini: 'gemini-2.5-flash',
+      xai: 'grok-4-1-fast-reasoning',
+      perplexity: 'sonar-pro',
+      mistral: 'mistral-large-latest',
+      cohere: 'command-a-03-2025',
+      huggingface: 'Llama-3.3-70B'
+    };
+    return models[provider] || '';
   }
 
   showEmpty() {

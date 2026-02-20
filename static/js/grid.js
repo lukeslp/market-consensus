@@ -2,9 +2,9 @@ class StockGrid {
   constructor(containerSelector, options = {}) {
     this.container = d3.select(containerSelector);
     this.options = {
-      columns: options.columns || 10,
-      tileW: options.tileW || 122,
-      tileH: options.tileH || 98,
+      columns: options.columns || 8,
+      tileW: options.tileW || 160,
+      tileH: options.tileH || 120,
       gap: options.gap || 8,
       onTileClick: options.onTileClick || null
     };
