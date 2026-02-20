@@ -119,7 +119,6 @@ def watchlist():
                 r = dict(row)
                 vt = r.get('vote_totals')
                 if vt:
-                    import json
                     r['vote_totals'] = json.loads(vt)
                 votes_by_stock_id[r['stock_id']] = r
 
