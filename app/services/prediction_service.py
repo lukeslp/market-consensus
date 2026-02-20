@@ -661,7 +661,8 @@ Return your response as JSON:
         reports = []
 
         from llm_providers import Message
-        for agent in subagents:
+
+        def _call_subagent(agent):
             prompt = f"""You are a specialized equity analyst agent with the role: {agent}.
 Analyze this stock and make a short-term prediction (next 30 minutes to 2.5 hours):
 
@@ -676,19 +677,29 @@ Return JSON only:
   "confidence": 0.0,
   "reasoning": "2-3 concise sentences from the {agent} perspective"
 }}"""
-            try:
-                response = self._complete_with_optional_model(
-                    provider,
-                    messages=[Message(role='user', content=prompt)],
-                    model=model
-                )
-                parsed = self._parse_prediction_json(response.content)
-                if not parsed:
-                    continue
+            response = self._complete_with_optional_model(
+                provider,
+                messages=[Message(role='user', content=prompt)],
+                model=model
+            )
+            parsed = self._parse_prediction_json(response.content)
+            if parsed:
                 parsed['subagent'] = agent
-                reports.append(parsed)
-            except Exception as e:
-                logger.warning(f'Subagent {agent} failed with {provider_name} for {symbol}: {e}')
+            return parsed
+
+        with ThreadPoolExecutor(max_workers=len(subagents)) as executor:
+            futures = {
+                executor.submit(_call_subagent, agent): agent
+                for agent in subagents
+            }
+            for future in as_completed(futures, timeout=45):
+                agent = futures[future]
+                try:
+                    result = future.result(timeout=30)
+                    if result:
+                        reports.append(result)
+                except Exception as e:
+                    logger.warning(f'Subagent {agent} failed with {provider_name} for {symbol}: {e}')
 
         if not reports:
             self._mark_provider_failure(provider_name, ValueError('No sub-agent reports generated'))
