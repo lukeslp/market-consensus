@@ -13,7 +13,7 @@ import base64
 class MistralProvider(BaseLLMProvider):
     """Mistral AI provider."""
 
-    DEFAULT_MODEL = "mistral-large-3"
+    DEFAULT_MODEL = "mistral-large-latest"
 
     def __init__(self, api_key: str = None, model: str = None):
         api_key = api_key or os.getenv("MISTRAL_API_KEY")
