@@ -2,124 +2,161 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Foresight | Multi-Model Stock Council</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Foresight Terminal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://d3js.org">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Spectral:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/foresight/static/css/style.css">
-  <link rel="stylesheet" href="/foresight/static/css/layout.css">
-  <link rel="stylesheet" href="/foresight/static/css/animations.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/foresight/static/css/terminal.css">
 </head>
 <body>
-  <a class="skip-link" href="#grid-stage">Skip to prediction grid</a>
-
-  <header class="topbar" role="banner">
-    <div class="topbar-left">
-      <div class="status-pill" aria-live="polite" aria-atomic="true">
-        <span id="status-indicator" class="status-indicator" aria-hidden="true"></span>
-        <span id="status-text">Connecting...</span>
+  <!-- Market Direction Banner -->
+  <header class="market-banner" id="market-banner">
+    <div class="market-banner-inner">
+      <div class="market-indicator" id="market-crypto">
+        <span class="market-label">CRYPTO</span>
+        <span class="market-dir" id="crypto-direction">--</span>
+        <span class="market-conf" id="crypto-confidence"></span>
       </div>
-      <div class="brand-block">
-        <h1 class="wordmark">FORESIGHT</h1>
-        <p class="wordmark-sub">Consensus Forecast Engine</p>
+      <div class="brand">
+        <h1 class="brand-name">FORESIGHT</h1>
+        <span class="brand-sub">AI Consensus Terminal</span>
       </div>
-    </div>
-
-    <div class="topbar-right">
-      <div class="phase-panel" aria-live="polite">
-        <p class="phase-kicker">Cycle Phase</p>
-        <p class="phase-value" id="phase-label">IDLE</p>
-      </div>
-      <div class="control-panel">
-        <button id="start-cycle-btn" class="btn btn-primary" aria-label="Run prediction cycle">Run Cycle</button>
-        <button id="stop-cycle-btn" class="btn btn-secondary" aria-label="Stop active cycle" disabled>Abort</button>
+      <div class="market-indicator" id="market-equities">
+        <span class="market-label">EQUITIES</span>
+        <span class="market-dir" id="equities-direction">--</span>
+        <span class="market-conf" id="equities-confidence"></span>
       </div>
     </div>
   </header>
 
-  <section class="metrics-strip" role="region" aria-label="System metrics">
-    <article class="metric"><span class="metric-label">Predictions</span><span id="stat-total-predictions" class="metric-value">--</span></article>
-    <article class="metric"><span class="metric-label">Accuracy</span><span id="stat-overall-accuracy" class="metric-value">--</span></article>
-    <article class="metric"><span class="metric-label">Cycles</span><span id="stat-cycles" class="metric-value">--</span></article>
-    <article class="metric"><span class="metric-label">Tracked Stocks</span><span id="stat-stocks" class="metric-value">--</span></article>
-  </section>
-
-  <main class="workspace" role="main" tabindex="-1">
-    <section class="canvas" aria-label="Prediction canvas">
-      <div class="phase-ladder" id="phase-ladder" aria-label="Cycle milestones">
-        <div class="phase-step" data-phase="discovery"><span aria-hidden="true">I</span><span>Discovery</span></div>
-        <div class="phase-step" data-phase="analysis"><span aria-hidden="true">II</span><span>Analysis</span></div>
-        <div class="phase-step" data-phase="debate"><span aria-hidden="true">III</span><span>Debate</span></div>
-        <div class="phase-step" data-phase="consensus"><span aria-hidden="true">IV</span><span>Consensus</span></div>
+  <!-- Controls Bar -->
+  <nav class="controls-bar">
+    <div class="controls-left">
+      <div class="tab-group" id="market-tabs">
+        <button class="tab active" data-filter="all">All</button>
+        <button class="tab" data-filter="crypto">Crypto</button>
+        <button class="tab" data-filter="equity">Equities</button>
       </div>
-
-      <div id="current-cycle-info" class="cycle-card" aria-live="polite">
-        <p>No active cycle</p>
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2"/></svg>
+        <input type="text" id="search-input" placeholder="Search ticker..." autocomplete="off">
       </div>
+    </div>
+    <div class="controls-right">
+      <div class="sort-group">
+        <label class="sort-label">Sort</label>
+        <select id="sort-select">
+          <option value="ticker">Ticker</option>
+          <option value="confidence-desc">Confidence ↓</option>
+          <option value="confidence-asc">Confidence ↑</option>
+          <option value="price-desc">Price ↓</option>
+          <option value="price-asc">Price ↑</option>
+          <option value="direction">Direction</option>
+        </select>
+      </div>
+      <div class="cycle-controls">
+        <button id="run-cycle-btn" class="btn-action" title="Run Cycle">▶</button>
+        <button id="abort-cycle-btn" class="btn-action btn-danger" title="Abort" disabled>■</button>
+      </div>
+      <div class="conn-status" id="conn-status" title="Connection status">
+        <span class="conn-dot"></span>
+      </div>
+    </div>
+  </nav>
 
-      <div id="grid-stage" class="grid-stage" aria-label="Stock prediction tiles"></div>
-      <p id="grid-counter" class="grid-counter" aria-live="polite"></p>
+  <!-- Stats Strip -->
+  <div class="stats-strip">
+    <div class="stat">
+      <span class="stat-val" id="stat-accuracy">--</span>
+      <span class="stat-key">Accuracy</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val" id="stat-predictions">--</span>
+      <span class="stat-key">Predictions</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val" id="stat-cycles">--</span>
+      <span class="stat-key">Cycles</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val" id="stat-stocks">--</span>
+      <span class="stat-key">Tracked</span>
+    </div>
+    <div class="stat cycle-phase">
+      <span class="stat-val" id="stat-phase">IDLE</span>
+      <span class="stat-key">Phase</span>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="terminal-main">
+    <!-- Stock Table -->
+    <section class="stock-table-wrap" id="stock-table-wrap">
+      <table class="stock-table" id="stock-table">
+        <thead>
+          <tr>
+            <th class="col-ticker">Ticker</th>
+            <th class="col-price">Price</th>
+            <th class="col-direction">Signal</th>
+            <th class="col-confidence">Conf</th>
+            <th class="col-provider">Source</th>
+          </tr>
+        </thead>
+        <tbody id="stock-tbody">
+          <tr class="empty-row"><td colspan="5">Loading predictions...</td></tr>
+        </tbody>
+      </table>
     </section>
 
-    <aside class="insights" role="complementary" aria-label="Model insights">
-      <section class="panel">
-        <h2>Provider Weights</h2>
-        <div id="provider-weights-host" class="weights-grid" aria-label="Provider vote weights">
-          <div class="loading-skeleton" aria-hidden="true"></div>
-        </div>
-      </section>
+    <!-- Side Panel (collapsible) -->
+    <aside class="side-panel" id="side-panel">
+      <button class="panel-toggle" id="panel-toggle" title="Toggle panel">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </button>
 
-      <section class="panel">
-        <h2>Provider Accuracy</h2>
-        <div id="leaderboard-host">
-          <div class="loading-skeleton" aria-hidden="true"></div>
-        </div>
-      </section>
+      <div class="panel-content">
+        <section class="panel-section">
+          <h3 class="panel-heading">Providers</h3>
+          <div id="provider-list" class="provider-list"></div>
+        </section>
 
-      <section class="panel">
-        <h2>Provider Health</h2>
-        <div id="provider-health" class="provider-health" aria-live="polite">
-          <p class="provider-health-empty">Checking provider status...</p>
-        </div>
-      </section>
+        <section class="panel-section">
+          <h3 class="panel-heading">Accuracy</h3>
+          <div id="accuracy-list" class="accuracy-list"></div>
+        </section>
 
-      <section class="panel">
-        <h2>Recent Cycles</h2>
-        <div id="cycle-history" class="cycle-history" aria-live="polite">
-          <p class="provider-health-empty">Loading history...</p>
-        </div>
-      </section>
+        <section class="panel-section">
+          <h3 class="panel-heading">Recent Cycles</h3>
+          <div id="cycle-list" class="cycle-list"></div>
+        </section>
+      </div>
     </aside>
   </main>
 
-  <aside id="stock-detail" class="detail-drawer" aria-hidden="true" aria-label="Stock details" role="complementary">
-    <div id="detail-backdrop" class="drawer-backdrop"></div>
-    <div class="drawer-inner">
-      <div class="drawer-head">
-        <p class="drawer-title" id="detail-symbol">Stock Detail</p>
-        <button id="close-detail" class="icon-btn" aria-label="Close stock details">✕</button>
+  <!-- Stock Detail Overlay -->
+  <div class="detail-overlay" id="detail-overlay" hidden>
+    <div class="detail-backdrop" id="detail-backdrop"></div>
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div class="detail-title-group">
+          <h2 class="detail-ticker" id="detail-ticker">--</h2>
+          <span class="detail-name" id="detail-name"></span>
+        </div>
+        <button class="detail-close" id="detail-close">✕</button>
       </div>
-      <div id="detail-visual" class="detail-visual">
-        <div class="loading-skeleton" aria-hidden="true"></div>
+      <div class="detail-body" id="detail-body">
+        <div class="detail-loading">Loading...</div>
       </div>
     </div>
-  </aside>
+  </div>
 
-  <section class="ticker-shell" role="region" aria-label="Recent prediction feed">
-    <span class="ticker-tag">LIVE FEED</span>
-    <div class="ticker-track"><div id="ticker-content" class="ticker-content">Awaiting first cycle</div></div>
-    <button id="ticker-pause-btn" class="ticker-pause-btn" aria-label="Pause ticker" aria-pressed="false">Pause</button>
-  </section>
+  <!-- Live Feed -->
+  <footer class="live-feed" id="live-feed">
+    <span class="feed-tag">LIVE</span>
+    <div class="feed-track" id="feed-track">Awaiting predictions...</div>
+  </footer>
 
-  <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-
-  <script src="https://d3js.org/d3.v7.min.js" defer></script>
-  <script src="/foresight/static/js/api.js" defer></script>
-  <script src="/foresight/static/js/grid.js" defer></script>
-  <script src="/foresight/static/js/detail.js" defer></script>
-  <script src="/foresight/static/js/sidebar.js" defer></script>
-  <script src="/foresight/static/js/app.js" defer></script>
+  <script src="/foresight/static/js/terminal.js"></script>
 </body>
 </html>

@@ -17,11 +17,12 @@ logger = logging.getLogger(__name__)
 
 class PredictionService:
     """Service for generating stock predictions using language models"""
-    DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
+    DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6'
     DEPRECATED_ANTHROPIC_MODELS = {
         'claude-3-5-sonnet-20241022',
         'claude-3-5-sonnet-latest',
         'claude-3-5-sonnet-20240620',
+        'claude-sonnet-4-20250514',
     }
 
     def __init__(self, config):
@@ -77,18 +78,10 @@ class PredictionService:
     def _get_provider(self, provider_name: str):
         """
         Get a provider instance by name.
-        First checks the cached providers dict (keyed by provider name),
-        then falls back to ProviderFactory.
+        Checks cached providers dict first, falls back to ProviderFactory.
         """
-        # Direct lookup by name (providers are keyed by name since _init_providers)
         if provider_name in self.providers:
             return self.providers[provider_name]
-        # Legacy role-based lookup
-        providers_map = self.config.get('PROVIDERS', {})
-        for role, p in self.providers.items():
-            if providers_map.get(role) == provider_name:
-                return p
-        # Fallback: create fresh from factory
         return ProviderFactory.get_provider(provider_name)
 
     def _complete_with_optional_model(self, provider, messages, model=None):
