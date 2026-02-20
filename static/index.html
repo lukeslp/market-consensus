@@ -194,6 +194,45 @@
     </aside>
   </main>
 
+  </div><!-- /view-terminal -->
+
+  <!-- === ANALYTICS VIEW === -->
+  <div class="view-content" id="view-analytics" hidden>
+    <div class="analytics-header">
+      <h2 class="analytics-title">Performance Analytics</h2>
+      <div class="analytics-controls">
+        <div class="timeframe-group">
+          <button class="tf-btn active" data-tf="24h">24h</button>
+          <button class="tf-btn" data-tf="7d">7d</button>
+          <button class="tf-btn" data-tf="30d">30d</button>
+        </div>
+        <button class="btn-action" id="export-csv-btn" title="Download predictions CSV">Export CSV</button>
+      </div>
+    </div>
+    <div class="analytics-grid">
+      <section class="chart-card" id="chart-accuracy-trend">
+        <h3 class="chart-title">Accuracy Trend</h3>
+        <div class="chart-body" id="chart-accuracy-trend-body"></div>
+      </section>
+      <section class="chart-card" id="chart-provider-leaderboard">
+        <h3 class="chart-title">Provider Leaderboard</h3>
+        <div class="chart-body" id="chart-provider-leaderboard-body"></div>
+      </section>
+      <section class="chart-card chart-card-wide" id="chart-returns">
+        <h3 class="chart-title">Returns Simulation</h3>
+        <div class="chart-body" id="chart-returns-body"></div>
+      </section>
+      <section class="chart-card chart-card-wide" id="chart-stock-heatmap">
+        <h3 class="chart-title">Per-Stock Accuracy</h3>
+        <div class="chart-body" id="chart-stock-heatmap-body"></div>
+      </section>
+      <section class="chart-card" id="chart-asset-split">
+        <h3 class="chart-title">Crypto vs Equities</h3>
+        <div class="chart-body" id="chart-asset-split-body"></div>
+      </section>
+    </div>
+  </div><!-- /view-analytics -->
+
   <!-- Stock Detail Overlay -->
   <div class="detail-overlay" id="detail-overlay" hidden>
     <div class="detail-backdrop" id="detail-backdrop"></div>
@@ -217,6 +256,8 @@
     <div class="feed-track" id="feed-track">Awaiting predictions...</div>
   </footer>
 
+  <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="/consensus/static/js/terminal.js"></script>
+  <script src="/consensus/static/js/analytics.js"></script>
 </body>
 </html>
