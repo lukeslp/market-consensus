@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class PredictionWorker:
     """Background worker that executes prediction cycles on a schedule"""
-    FULL_PROVIDER_ORDER = ['anthropic', 'openai', 'gemini', 'xai', 'perplexity', 'mistral', 'cohere', 'huggingface']
+    FULL_PROVIDER_ORDER = ['anthropic', 'openai', 'gemini', 'xai', 'perplexity', 'mistral', 'cohere', 'huggingface', 'ollama']
     PROVIDER_STAGE = {
         'anthropic':   'premium',
         'openai':      'premium',
@@ -29,6 +29,7 @@ class PredictionWorker:
         'mistral':     'standard',
         'cohere':      'standard',
         'huggingface': 'standard',
+        'ollama':      'standard',
     }
 
     def __init__(self, config: Dict):
