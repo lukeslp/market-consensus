@@ -333,8 +333,9 @@ class OllamaProvider(BaseLLMProvider):
             with requests.post(
                 f"{self.host}/api/chat",
                 json=payload,
+                headers=self._auth_headers,
                 stream=True,
-                timeout=120
+                timeout=180
             ) as response:
                 if response.status_code != 200:
                     raise RuntimeError(f"Ollama API error ({response.status_code}): {response.text}")
@@ -453,7 +454,8 @@ class OllamaProvider(BaseLLMProvider):
             response = requests.post(
                 f"{self.host}/api/chat",
                 json=payload,
-                timeout=120
+                headers=self._auth_headers,
+                timeout=180
             )
 
             if response.status_code != 200:
