@@ -119,10 +119,18 @@
       <span class="stat-val" id="stat-stocks">--</span>
       <span class="stat-key">Tracked</span>
     </div>
+    <div class="stat" data-tip="Time since last data refresh">
+      <span class="stat-val" id="stat-freshness">--</span>
+      <span class="stat-key">Last Update</span>
+    </div>
     <div class="stat cycle-phase" data-tip="Current cycle phase: IDLE, DISCOVERING, ANALYZING, or DEBATING">
       <span class="stat-val" id="stat-phase">IDLE</span>
       <span class="stat-key">Phase</span>
     </div>
+  </div>
+  <!-- Cycle Progress Bar -->
+  <div class="cycle-progress" id="cycle-progress" hidden>
+    <div class="cycle-progress-fill" id="cycle-progress-fill"></div>
   </div>
 
   <!-- How It Works Banner -->
