@@ -161,7 +161,7 @@ class Config:
     # Order determines who speaks first in the debate round.
     PROVIDER_ORDER = [p.strip() for p in os.environ.get(
         'PROVIDER_ORDER',
-        'anthropic,openai,gemini,xai,perplexity,mistral,huggingface,cohere'
+        'anthropic,openai,gemini,xai,perplexity,mistral,huggingface,cohere,ollama'
     ).split(',') if p.strip()]
 
     # Per-provider baseline vote weights. Override with PROVIDER_WEIGHT_<NAME>=<float>.
@@ -177,6 +177,7 @@ class Config:
             'mistral':     '0.8',
             'huggingface': '0.85',
             'cohere':      '0.6',
+            'ollama':      '0.8',
         }.items()
     }
 
