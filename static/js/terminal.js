@@ -163,6 +163,8 @@
     bindHelp();
     // Refresh data every 30s
     refreshInterval = setInterval(loadAll, 30000);
+    // Update freshness display every 15s
+    freshnessInterval = setInterval(updateFreshness, 15000);
   });
 
   async function loadAll() {
@@ -334,7 +336,30 @@
     $('#detail-backdrop').addEventListener('click', closeDetail);
     $('#detail-close').addEventListener('click', closeDetail);
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeDetail();
+      if (e.key === 'Escape') { closeDetail(); return; }
+
+      // Skip keyboard nav if user is typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+      // Skip if analytics view is active
+      const analyticsView = document.getElementById('view-analytics');
+      if (analyticsView && !analyticsView.hidden) return;
+
+      const rows = $$('#stock-tbody tr:not(.empty-row)');
+      if (rows.length === 0) return;
+
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        keyboardFocusIndex = Math.min(keyboardFocusIndex + 1, rows.length - 1);
+        highlightRow(rows);
+      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        keyboardFocusIndex = Math.max(keyboardFocusIndex - 1, 0);
+        highlightRow(rows);
+      } else if (e.key === 'Enter' && keyboardFocusIndex >= 0 && keyboardFocusIndex < rows.length) {
+        e.preventDefault();
+        const ticker = rows[keyboardFocusIndex].dataset.ticker;
+        if (ticker) window._openDetail(ticker);
+      }
     });
   }
 
