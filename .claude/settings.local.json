@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/coolhand/geepers/logs/scalpel-operations.log << 'EOF'\n[2026-02-16 19:00:00] OPERATION: Fix duplicate const declarations\n  File: /home/coolhand/projects/foresight/static/js/app.js\n  Function: handlePrediction\\(\\)\n  Change: Removed second `const symbol` and `const direction` declarations in ticker tape block; the already-declared variables from the grid patch block are now reused\n  Reason: Duplicate const in same function body causes SyntaxError in strict mode\n  Verified: yes\n\n[2026-02-16 19:00:00] OPERATION: Fix accuracy field name mismatch\n  File: /home/coolhand/projects/foresight/static/js/sidebar.js\n  Function: updateLeaderboard\\(\\)\n  Change: Replaced all d.accuracy / b.accuracy / a.accuracy references with d.accuracy_rate / b.accuracy_rate / a.accuracy_rate \\(5 occurrences: sort, bar width, bar fill color, text tween, aria-label\\)\n  Reason: API /api/stats returns accuracy_rate \\(aliased in SQL\\) not accuracy; bars were always zero\n  Verified: yes\n\n[2026-02-16 19:00:00] OPERATION: Add get_status\\(\\) method\n  File: /home/coolhand/projects/foresight/app/worker.py\n  Function: PredictionWorker.get_status\\(\\)\n  Change: Added get_status\\(\\) method between stop\\(\\) and _run_worker\\(\\); returns running, alive, current_cycle_id, last_cycle_time, total_cycles_completed\n  Reason: api.py /api/worker/status calls worker.get_status\\(\\) which did not exist; would raise AttributeError at runtime\n  Verified: yes\nEOF)",
+      "WebFetch(domain:docs.perplexity.ai)",
+      "Bash(PYTHONPATH=/home/coolhand/shared python -c \" import sys sys.path.insert\\(0, ''/home/coolhand/shared''\\) sys.path.insert\\(0, ''/home/coolhand/servers/swarm''\\) import traceback try: from core.core_web import app print\\(''core_web: OK''\\) except Exception as e: print\\(f''core_web ERROR: {e}''\\) traceback.print_exc\\(\\) \")",
+      "Bash(PYTHONPATH=/home/coolhand/shared:. python:*)",
+      "Bash(for key in XAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY PERPLEXITY_API_KEY MISTRAL_API_KEY COHERE_API_KEY HUGGINGFACE_API_KEY HF_API_KEY)",
+      "Bash(do)",
+      "Bash(val=\"$!key\")",
+      "Bash(if [ -n \"$val\" ])",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(PYTHONPATH=/home/coolhand/shared:$PYTHONPATH python:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_wait_for",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_run_code",
+      "Bash(PYTHONPATH=. python3:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "orchestrator"
+  ]
+}
