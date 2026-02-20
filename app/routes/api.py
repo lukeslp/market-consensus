@@ -384,6 +384,207 @@ def stream():
     )
 
 
+@api_bp.route('/performance')
+def performance():
+    """Get overall accuracy, by-provider trends with sparkline data, by-asset-type split"""
+    db = get_db()
+    timeframe = request.args.get('timeframe', '24h')
+    if timeframe not in ('1h', '6h', '24h', '7d', '30d'):
+        timeframe = '24h'
+
+    # Overall accuracy for this timeframe
+    overall = db.calculate_accuracy_stats(provider=None, timeframe=timeframe)
+
+    # Per-provider leaderboard with trends
+    leaderboard = db.get_provider_leaderboard()
+    by_provider = []
+    for entry in leaderboard:
+        provider = entry.get('provider', '')
+        if not provider:
+            continue
+        # Get sparkline trend data for this provider
+        trends = db.get_accuracy_trends(provider=provider, timeframe=timeframe, limit=20)
+        by_provider.append({
+            'provider': provider,
+            'total_predictions': entry.get('total_predictions', 0),
+            'correct_predictions': entry.get('correct_predictions', 0),
+            'accuracy_rate': entry.get('accuracy_rate'),
+            'avg_confidence': entry.get('avg_confidence'),
+            'trend': [{'accuracy_rate': t.get('accuracy_rate'), 'calculated_at': t.get('calculated_at')} for t in trends],
+        })
+
+    # Overall trend
+    overall_trend = db.get_accuracy_trends(provider='_overall', timeframe=timeframe, limit=20)
+
+    # Asset type split
+    asset_split = db.get_equity_vs_crypto_accuracy()
+
+    return jsonify({
+        'timeframe': timeframe,
+        'overall': overall,
+        'overall_trend': [{'accuracy_rate': t.get('accuracy_rate'), 'calculated_at': t.get('calculated_at')} for t in overall_trend],
+        'by_provider': by_provider,
+        'asset_split': asset_split,
+    })
+
+
+@api_bp.route('/performance/returns')
+def performance_returns():
+    """Cumulative PnL simulation, win/loss, max drawdown, per-trade list"""
+    db = get_db()
+    since = request.args.get('since')
+    ticker = request.args.get('ticker')
+
+    raw_trades = db.get_returns_simulation(since=since)
+
+    # Filter by ticker if specified
+    if ticker:
+        ticker_upper = ticker.upper()
+        raw_trades = [t for t in raw_trades if t.get('ticker', '').upper() == ticker_upper]
+
+    trades = []
+    running_total = 1.0
+    peak = 1.0
+    max_drawdown = 0.0
+    wins = 0
+    losses = 0
+
+    for t in raw_trades:
+        initial = t.get('initial_price', 0)
+        actual = t.get('actual_price', 0)
+        direction = t.get('predicted_direction', 'neutral')
+
+        if not initial or initial <= 0 or not actual:
+            continue
+
+        price_change = (actual - initial) / initial
+
+        # PnL: if predicted up and price went up, profit. If predicted down and price went down, profit.
+        if direction == 'up':
+            trade_pnl = price_change
+        elif direction == 'down':
+            trade_pnl = -price_change
+        else:
+            trade_pnl = 0.0
+
+        running_total *= (1 + trade_pnl)
+        peak = max(peak, running_total)
+        drawdown = (peak - running_total) / peak if peak > 0 else 0
+        max_drawdown = max(max_drawdown, drawdown)
+
+        if trade_pnl > 0:
+            wins += 1
+        elif trade_pnl < 0:
+            losses += 1
+
+        trades.append({
+            'ticker': t.get('ticker'),
+            'prediction_time': t.get('prediction_time'),
+            'evaluated_at': t.get('evaluated_at'),
+            'direction': direction,
+            'initial_price': initial,
+            'actual_price': actual,
+            'trade_pnl': round(trade_pnl, 6),
+            'cumulative': round(running_total, 6),
+        })
+
+    return jsonify({
+        'trades': trades,
+        'summary': {
+            'total_trades': len(trades),
+            'wins': wins,
+            'losses': losses,
+            'win_rate': wins / len(trades) if trades else 0,
+            'cumulative_return': round(running_total - 1, 6),
+            'max_drawdown': round(max_drawdown, 6),
+        }
+    })
+
+
+@api_bp.route('/performance/stocks')
+def performance_stocks():
+    """Per-stock accuracy heatmap data"""
+    db = get_db()
+    sort_by = request.args.get('sort', 'predictions')
+    asset_type = request.args.get('asset_type')
+
+    stocks = db.get_per_stock_accuracy(limit=200)
+
+    # Filter by asset type if specified
+    if asset_type:
+        if asset_type == 'crypto':
+            stocks = [s for s in stocks if s.get('ticker', '').endswith('-USD')]
+        elif asset_type == 'equity':
+            stocks = [s for s in stocks if not s.get('ticker', '').endswith('-USD') and not s.get('ticker', '').startswith('MARKET-')]
+
+    # Sort
+    if sort_by == 'accuracy':
+        stocks.sort(key=lambda s: s.get('accuracy_rate') or 0, reverse=True)
+
+    return jsonify({
+        'stocks': stocks,
+        'total': len(stocks),
+    })
+
+
+@api_bp.route('/export/predictions')
+def export_predictions():
+    """CSV or JSON download of predictions with full detail"""
+    db = get_db()
+    since = request.args.get('since')
+    until = request.args.get('until')
+    provider = request.args.get('provider')
+    ticker = request.args.get('ticker')
+    fmt = request.args.get('format', 'csv')
+
+    predictions = db.get_predictions_by_date_range(
+        start=since, end=until, provider=provider, ticker=ticker
+    )
+
+    if fmt == 'json':
+        return jsonify({'predictions': predictions, 'total': len(predictions)})
+
+    # CSV export
+    import csv
+    import io
+    output = io.StringIO()
+    if predictions:
+        fieldnames = ['ticker', 'name', 'provider', 'predicted_direction', 'confidence',
+                      'initial_price', 'actual_price', 'actual_direction', 'accuracy',
+                      'prediction_time', 'target_time', 'evaluated_at', 'reasoning']
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        for p in predictions:
+            writer.writerow(p)
+
+    csv_data = output.getvalue()
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=consensus_predictions.csv'}
+    )
+
+
+@api_bp.route('/export/debate/<int:cycle_id>/<symbol>')
+def export_debate(cycle_id, symbol):
+    """Full debate transcript export for a specific stock in a cycle"""
+    db = get_db()
+    stock = db.get_stock(symbol.upper())
+    if not stock:
+        return jsonify({'error': 'Stock not found'}), 404
+
+    debate_rounds = db.get_debate_rounds_for_stock(stock['id'], cycle_id=cycle_id)
+    agent_votes = db.get_agent_votes_for_stock(stock['id'], cycle_id=cycle_id)
+
+    return jsonify({
+        'cycle_id': cycle_id,
+        'symbol': symbol.upper(),
+        'stock': stock,
+        'debate_rounds': debate_rounds,
+        'agent_votes': agent_votes,
+    })
+
+
 @api_bp.route('/worker/status')
 def worker_status():
     """Get background worker status"""
