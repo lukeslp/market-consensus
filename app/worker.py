@@ -867,26 +867,36 @@ class PredictionWorker:
             symbols: List[str] = []
             seen = set()
 
-            # Add equities from watchlist
-            for symbol in equity_watchlist[:max_stocks]:
+            # Determine ordering: crypto first when market is closed so they
+            # don't get starved by long equity processing.
+            market_open = self._is_market_open(self._et_now())
+            if market_open:
+                first_list, second_list = equity_watchlist[:max_stocks], crypto_watchlist[:max_crypto]
+                first_label, second_label = 'Equity', 'Crypto'
+            else:
+                first_list = crypto_watchlist[:max_crypto] if (self.include_crypto and max_crypto > 0) else []
+                second_list = equity_watchlist[:max_stocks]
+                first_label, second_label = 'Crypto', 'Equity'
+
+            # Add first priority list
+            for symbol in first_list:
                 key = symbol.upper()
                 if key in seen:
                     continue
                 symbols.append(key)
                 seen.add(key)
-            logger.info(f'Equity watchlist: {len(symbols)} symbols')
+            logger.info(f'{first_label} watchlist (priority): {len(symbols)} symbols')
 
-            # Add crypto from watchlist
-            if self.include_crypto and max_crypto > 0:
-                crypto_added = 0
-                for symbol in crypto_watchlist[:max_crypto]:
-                    key = symbol.upper()
-                    if key in seen:
-                        continue
-                    symbols.append(key)
-                    seen.add(key)
-                    crypto_added += 1
-                logger.info(f'Crypto watchlist: {crypto_added} symbols')
+            # Add second priority list
+            second_added = 0
+            for symbol in second_list:
+                key = symbol.upper()
+                if key in seen:
+                    continue
+                symbols.append(key)
+                seen.add(key)
+                second_added += 1
+            logger.info(f'{second_label} watchlist: {second_added} symbols')
 
             if not symbols:
                 logger.warning('Watchlists are empty, no symbols to process')
