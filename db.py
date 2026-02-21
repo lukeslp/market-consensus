@@ -188,8 +188,28 @@ class ConsensusDB:
                 )
             """)
 
+            # Schema migrations — add columns that may not exist on older databases
+            self._migrate_schema(conn)
+
             # Create indexes for performance
             self._create_indexes(conn)
+
+    def _migrate_schema(self, conn):
+        """Add columns to existing tables that may not have them yet."""
+        migrations = [
+            # predictions: model name, prompt text, token usage
+            ("predictions", "model", "TEXT"),
+            ("predictions", "prompt", "TEXT"),
+            ("predictions", "usage_tokens", "TEXT"),  # JSON: {input, output, total}
+            # agent_votes: prompt text, token usage
+            ("agent_votes", "prompt", "TEXT"),
+            ("agent_votes", "usage_tokens", "TEXT"),  # JSON: {input, output, total}
+        ]
+        for table, column, col_type in migrations:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     def _create_indexes(self, conn):
         """Create indexes on frequently queried columns"""
@@ -524,22 +544,26 @@ class ConsensusDB:
         predicted_price: float = None,
         reasoning: str = None,
         raw_response: str = None,
-        prediction_time: datetime = None
+        prediction_time: datetime = None,
+        model: str = None,
+        prompt: str = None,
+        usage_tokens: Dict = None
     ) -> int:
         """Add a new prediction"""
         prediction_time = prediction_time or datetime.now()
+        usage_json = json.dumps(usage_tokens) if usage_tokens else None
 
         with self.get_connection() as conn:
             cursor = conn.execute("""
                 INSERT INTO predictions (
                     cycle_id, stock_id, provider, prediction_time, target_time,
                     predicted_direction, predicted_price, confidence, reasoning,
-                    initial_price, raw_response
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    initial_price, raw_response, model, prompt, usage_tokens
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cycle_id, stock_id, provider, prediction_time, target_time,
                 predicted_direction, predicted_price, confidence, reasoning,
-                initial_price, raw_response
+                initial_price, raw_response, model, prompt, usage_json
             ))
 
             # Update stock prediction count
@@ -788,18 +812,23 @@ class ConsensusDB:
         reasoning: str = None,
         model: str = None,
         raw_response: str = None,
-        prediction_id: int = None
+        prediction_id: int = None,
+        prompt: str = None,
+        usage_tokens: Dict = None
     ) -> int:
         """Record an individual agent vote"""
+        usage_json = json.dumps(usage_tokens) if usage_tokens else None
         with self.get_connection() as conn:
             cursor = conn.execute("""
                 INSERT INTO agent_votes (
                     prediction_id, cycle_id, stock_id, provider, agent_role,
-                    phase, vote_direction, confidence, reasoning, model, raw_response
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    phase, vote_direction, confidence, reasoning, model, raw_response,
+                    prompt, usage_tokens
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 prediction_id, cycle_id, stock_id, provider, agent_role,
-                phase, vote_direction, confidence, reasoning, model, raw_response
+                phase, vote_direction, confidence, reasoning, model, raw_response,
+                prompt, usage_json
             ))
             return cursor.lastrowid
 

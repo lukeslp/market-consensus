@@ -1062,7 +1062,8 @@ class PredictionWorker:
                             confidence=report['confidence'],
                             initial_price=current_price,
                             target_time=target_time,
-                            reasoning=f"[{stage_name}] {report['reasoning']}"
+                            reasoning=f"[{stage_name}] {report['reasoning']}",
+                            model=report.get('model', ''),
                         )
                         # Persist individual sub-agent votes to agent_votes table
                         for subagent in report.get('subagents', []):
@@ -1077,7 +1078,10 @@ class PredictionWorker:
                                     agent_role=subagent.get('subagent', 'unknown'),
                                     reasoning=subagent.get('reasoning', ''),
                                     model=report.get('model', ''),
-                                    prediction_id=pred_id
+                                    prediction_id=pred_id,
+                                    raw_response=subagent.get('raw_response', ''),
+                                    prompt=subagent.get('prompt', ''),
+                                    usage_tokens=subagent.get('usage'),
                                 )
                             except Exception as vote_err:
                                 logger.debug(f'Failed to persist sub-agent vote: {vote_err}')
@@ -1168,7 +1172,11 @@ class PredictionWorker:
                             confidence=report['confidence'],
                             initial_price=current_price,
                             target_time=target_time,
-                            reasoning=f"[{report.get('stage','n/a')}] {report.get('reasoning','')}"
+                            reasoning=f"[{report.get('stage','n/a')}] {report.get('reasoning','')}",
+                            raw_response=report.get('raw_response', ''),
+                            model=report.get('model', ''),
+                            prompt=report.get('prompt', ''),
+                            usage_tokens=report.get('usage'),
                         )
                         # Persist synthesis vote to agent_votes table
                         try:
@@ -1182,7 +1190,10 @@ class PredictionWorker:
                                 agent_role='council_member',
                                 reasoning=report.get('reasoning', ''),
                                 model=report.get('model', ''),
-                                prediction_id=syn_pred_id
+                                prediction_id=syn_pred_id,
+                                raw_response=report.get('raw_response', ''),
+                                prompt=report.get('prompt', ''),
+                                usage_tokens=report.get('usage'),
                             )
                         except Exception as sv_err:
                             logger.debug(f'Failed to persist synthesis vote: {sv_err}')
@@ -1402,9 +1413,12 @@ and the overall sentiment distribution. Return JSON only:
                     continue
 
                 parsed['provider'] = provider_name
+                parsed['raw_response'] = response.content
+                parsed['model'] = model or getattr(provider, 'model', 'unknown')
+                parsed['usage'] = getattr(response, 'usage', None) or {}
                 reports.append(parsed)
 
-                db.add_prediction(
+                mkt_pred_id = db.add_prediction(
                     cycle_id=cycle_id,
                     stock_id=stock_id,
                     provider=provider_name,
@@ -1412,8 +1426,31 @@ and the overall sentiment distribution. Return JSON only:
                     confidence=parsed['confidence'],
                     initial_price=0.0,  # No single price for market index
                     target_time=target_time,
-                    reasoning=f"[market-{market_type.lower()}] {parsed.get('reasoning', '')}"
+                    reasoning=f"[market-{market_type.lower()}] {parsed.get('reasoning', '')}",
+                    raw_response=response.content,
+                    model=parsed['model'],
+                    prompt=prompt,
+                    usage_tokens=parsed.get('usage'),
                 )
+                # Persist market direction agent vote
+                try:
+                    db.add_agent_vote(
+                        cycle_id=cycle_id,
+                        stock_id=stock_id,
+                        provider=provider_name,
+                        vote_direction=parsed['prediction'],
+                        confidence=float(parsed.get('confidence', 0.5)),
+                        phase='market',
+                        agent_role='market_strategist',
+                        reasoning=parsed.get('reasoning', ''),
+                        model=parsed['model'],
+                        prediction_id=mkt_pred_id,
+                        raw_response=response.content,
+                        prompt=prompt,
+                        usage_tokens=parsed.get('usage'),
+                    )
+                except Exception as mv_err:
+                    logger.debug(f'Failed to persist market direction agent vote: {mv_err}')
                 self.prediction_service._mark_provider_success(provider_name)
                 logger.info(
                     f'[{market_ticker}] {provider_name}: {parsed["prediction"]} '
@@ -1438,6 +1475,31 @@ and the overall sentiment distribution. Return JSON only:
         winning = max(vote_totals.items(), key=lambda x: x[1])[0]
         total_score = sum(vote_totals.values()) or 1.0
         consensus_conf = vote_totals[winning] / total_score
+
+        # Persist market direction debate round
+        mkt_transcript_lines = []
+        for report in reports:
+            direction = report['prediction'] if report['prediction'] in vote_totals else 'neutral'
+            conf = float(report.get('confidence') or 0.5)
+            w = float(weights.get(report['provider'], 1.0))
+            score = max(0.05, conf) * w
+            mkt_transcript_lines.append(
+                f"{report['provider']}: dir={direction} conf={conf:.2f} weight={w:.2f} score={score:.2f}; reason={report.get('reasoning','')}"
+            )
+        try:
+            db.add_debate_round(
+                cycle_id=cycle_id,
+                stock_id=stock_id,
+                round_type='market',
+                vote_totals=vote_totals,
+                winning_direction=winning,
+                winning_confidence=consensus_conf,
+                participant_count=len(reports),
+                debate_transcript='\n'.join(mkt_transcript_lines),
+                provider_weights=weights
+            )
+        except Exception as mdr_err:
+            logger.debug(f'Failed to persist market debate round: {mdr_err}')
 
         db.add_prediction(
             cycle_id=cycle_id,

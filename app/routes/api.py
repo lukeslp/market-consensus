@@ -477,3 +477,320 @@ def stop_cycle(cycle_id):
         'status': 'completed',
         'cycle_id': cycle_id
     })
+
+
+# ========== Corpus Export Endpoints ==========
+
+@api_bp.route('/corpus/predictions')
+def corpus_predictions():
+    """Export all predictions with full detail for corpus analysis.
+    Supports pagination via ?page=1&per_page=500 and optional filters:
+      ?cycle_id=N  ?provider=name  ?ticker=AAPL  ?phase=analysis
+    """
+    db = get_db()
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 500, type=int), 5000)
+    offset = (page - 1) * per_page
+
+    cycle_id = request.args.get('cycle_id', type=int)
+    provider = request.args.get('provider')
+    ticker = request.args.get('ticker')
+
+    with db.get_connection() as conn:
+        query = """
+            SELECT p.*, s.ticker, s.name as stock_name, c.start_time as cycle_start
+            FROM predictions p
+            JOIN stocks s ON p.stock_id = s.id
+            JOIN cycles c ON p.cycle_id = c.id
+            WHERE 1=1
+        """
+        count_query = """
+            SELECT COUNT(*) as total
+            FROM predictions p
+            JOIN stocks s ON p.stock_id = s.id
+            WHERE 1=1
+        """
+        params = []
+        count_params = []
+
+        if cycle_id:
+            query += " AND p.cycle_id = ?"
+            count_query += " AND p.cycle_id = ?"
+            params.append(cycle_id)
+            count_params.append(cycle_id)
+        if provider:
+            query += " AND p.provider = ?"
+            count_query += " AND p.provider = ?"
+            params.append(provider)
+            count_params.append(provider)
+        if ticker:
+            query += " AND s.ticker = ?"
+            count_query += " AND s.ticker = ?"
+            params.append(ticker.upper())
+            count_params.append(ticker.upper())
+
+        total = conn.execute(count_query, count_params).fetchone()['total']
+        query += " ORDER BY p.id ASC LIMIT ? OFFSET ?"
+        params.extend([per_page, offset])
+        rows = conn.execute(query, params).fetchall()
+
+    results = []
+    for row in rows:
+        d = dict(row)
+        # Parse JSON fields
+        if d.get('usage_tokens'):
+            try:
+                d['usage_tokens'] = json.loads(d['usage_tokens'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        results.append(d)
+
+    return jsonify({
+        'predictions': results,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': (total + per_page - 1) // per_page if total > 0 else 0,
+    })
+
+
+@api_bp.route('/corpus/agent_votes')
+def corpus_agent_votes():
+    """Export all agent votes with full detail for corpus analysis.
+    Supports pagination via ?page=1&per_page=500 and optional filters:
+      ?cycle_id=N  ?provider=name  ?ticker=AAPL  ?phase=analysis|synthesis|council|market
+    """
+    db = get_db()
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 500, type=int), 5000)
+    offset = (page - 1) * per_page
+
+    cycle_id = request.args.get('cycle_id', type=int)
+    provider = request.args.get('provider')
+    ticker = request.args.get('ticker')
+    phase = request.args.get('phase')
+
+    with db.get_connection() as conn:
+        query = """
+            SELECT av.*, s.ticker, s.name as stock_name
+            FROM agent_votes av
+            JOIN stocks s ON av.stock_id = s.id
+            WHERE 1=1
+        """
+        count_query = """
+            SELECT COUNT(*) as total
+            FROM agent_votes av
+            JOIN stocks s ON av.stock_id = s.id
+            WHERE 1=1
+        """
+        params = []
+        count_params = []
+
+        if cycle_id:
+            query += " AND av.cycle_id = ?"
+            count_query += " AND av.cycle_id = ?"
+            params.append(cycle_id)
+            count_params.append(cycle_id)
+        if provider:
+            query += " AND av.provider = ?"
+            count_query += " AND av.provider = ?"
+            params.append(provider)
+            count_params.append(provider)
+        if ticker:
+            query += " AND s.ticker = ?"
+            count_query += " AND s.ticker = ?"
+            params.append(ticker.upper())
+            count_params.append(ticker.upper())
+        if phase:
+            query += " AND av.phase = ?"
+            count_query += " AND av.phase = ?"
+            params.append(phase)
+            count_params.append(phase)
+
+        total = conn.execute(count_query, count_params).fetchone()['total']
+        query += " ORDER BY av.id ASC LIMIT ? OFFSET ?"
+        params.extend([per_page, offset])
+        rows = conn.execute(query, params).fetchall()
+
+    results = []
+    for row in rows:
+        d = dict(row)
+        if d.get('usage_tokens'):
+            try:
+                d['usage_tokens'] = json.loads(d['usage_tokens'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        results.append(d)
+
+    return jsonify({
+        'agent_votes': results,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': (total + per_page - 1) // per_page if total > 0 else 0,
+    })
+
+
+@api_bp.route('/corpus/debate_rounds')
+def corpus_debate_rounds():
+    """Export all debate rounds with full detail for corpus analysis.
+    Supports pagination via ?page=1&per_page=500 and optional filters:
+      ?cycle_id=N  ?ticker=AAPL  ?round_type=council|synthesis|market
+    """
+    db = get_db()
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 500, type=int), 5000)
+    offset = (page - 1) * per_page
+
+    cycle_id = request.args.get('cycle_id', type=int)
+    ticker = request.args.get('ticker')
+    round_type = request.args.get('round_type')
+
+    with db.get_connection() as conn:
+        query = """
+            SELECT dr.*, s.ticker, s.name as stock_name
+            FROM debate_rounds dr
+            JOIN stocks s ON dr.stock_id = s.id
+            WHERE 1=1
+        """
+        count_query = """
+            SELECT COUNT(*) as total
+            FROM debate_rounds dr
+            JOIN stocks s ON dr.stock_id = s.id
+            WHERE 1=1
+        """
+        params = []
+        count_params = []
+
+        if cycle_id:
+            query += " AND dr.cycle_id = ?"
+            count_query += " AND dr.cycle_id = ?"
+            params.append(cycle_id)
+            count_params.append(cycle_id)
+        if ticker:
+            query += " AND s.ticker = ?"
+            count_query += " AND s.ticker = ?"
+            params.append(ticker.upper())
+            count_params.append(ticker.upper())
+        if round_type:
+            query += " AND dr.round_type = ?"
+            count_query += " AND dr.round_type = ?"
+            params.append(round_type)
+            count_params.append(round_type)
+
+        total = conn.execute(count_query, count_params).fetchone()['total']
+        query += " ORDER BY dr.id ASC LIMIT ? OFFSET ?"
+        params.extend([per_page, offset])
+        rows = conn.execute(query, params).fetchall()
+
+    results = []
+    for row in rows:
+        d = dict(row)
+        if d.get('vote_totals'):
+            try:
+                d['vote_totals'] = json.loads(d['vote_totals'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if d.get('provider_weights'):
+            try:
+                d['provider_weights'] = json.loads(d['provider_weights'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        results.append(d)
+
+    return jsonify({
+        'debate_rounds': results,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': (total + per_page - 1) // per_page if total > 0 else 0,
+    })
+
+
+@api_bp.route('/corpus/summary')
+def corpus_summary():
+    """Get a summary of all data available for corpus analysis."""
+    db = get_db()
+
+    with db.get_connection() as conn:
+        pred_count = conn.execute("SELECT COUNT(*) as n FROM predictions").fetchone()['n']
+        vote_count = conn.execute("SELECT COUNT(*) as n FROM agent_votes").fetchone()['n']
+        debate_count = conn.execute("SELECT COUNT(*) as n FROM debate_rounds").fetchone()['n']
+        cycle_count = conn.execute("SELECT COUNT(*) as n FROM cycles").fetchone()['n']
+        stock_count = conn.execute("SELECT COUNT(*) as n FROM stocks").fetchone()['n']
+        price_count = conn.execute("SELECT COUNT(*) as n FROM prices").fetchone()['n']
+
+        # Date range
+        date_range = conn.execute("""
+            SELECT MIN(prediction_time) as earliest, MAX(prediction_time) as latest
+            FROM predictions
+        """).fetchone()
+
+        # Provider breakdown
+        providers = conn.execute("""
+            SELECT provider, COUNT(*) as count
+            FROM predictions
+            GROUP BY provider
+            ORDER BY count DESC
+        """).fetchall()
+
+        # Agent vote phase breakdown
+        phases = conn.execute("""
+            SELECT phase, COUNT(*) as count
+            FROM agent_votes
+            GROUP BY phase
+            ORDER BY count DESC
+        """).fetchall()
+
+        # Debate round type breakdown
+        round_types = conn.execute("""
+            SELECT round_type, COUNT(*) as count
+            FROM debate_rounds
+            GROUP BY round_type
+            ORDER BY count DESC
+        """).fetchall()
+
+        # Columns with data (non-null counts for key fields)
+        data_coverage = conn.execute("""
+            SELECT
+                COUNT(*) as total_predictions,
+                SUM(CASE WHEN raw_response IS NOT NULL AND raw_response != '' THEN 1 ELSE 0 END) as has_raw_response,
+                SUM(CASE WHEN model IS NOT NULL AND model != '' THEN 1 ELSE 0 END) as has_model,
+                SUM(CASE WHEN prompt IS NOT NULL AND prompt != '' THEN 1 ELSE 0 END) as has_prompt,
+                SUM(CASE WHEN usage_tokens IS NOT NULL THEN 1 ELSE 0 END) as has_usage_tokens,
+                SUM(CASE WHEN reasoning IS NOT NULL AND reasoning != '' THEN 1 ELSE 0 END) as has_reasoning,
+                SUM(CASE WHEN accuracy IS NOT NULL THEN 1 ELSE 0 END) as has_accuracy
+            FROM predictions
+        """).fetchone()
+
+        vote_coverage = conn.execute("""
+            SELECT
+                COUNT(*) as total_votes,
+                SUM(CASE WHEN raw_response IS NOT NULL AND raw_response != '' THEN 1 ELSE 0 END) as has_raw_response,
+                SUM(CASE WHEN prompt IS NOT NULL AND prompt != '' THEN 1 ELSE 0 END) as has_prompt,
+                SUM(CASE WHEN usage_tokens IS NOT NULL THEN 1 ELSE 0 END) as has_usage_tokens,
+                SUM(CASE WHEN reasoning IS NOT NULL AND reasoning != '' THEN 1 ELSE 0 END) as has_reasoning
+            FROM agent_votes
+        """).fetchone()
+
+    return jsonify({
+        'totals': {
+            'predictions': pred_count,
+            'agent_votes': vote_count,
+            'debate_rounds': debate_count,
+            'cycles': cycle_count,
+            'stocks': stock_count,
+            'price_snapshots': price_count,
+        },
+        'date_range': {
+            'earliest': date_range['earliest'] if date_range else None,
+            'latest': date_range['latest'] if date_range else None,
+        },
+        'providers': [{'provider': r['provider'], 'count': r['count']} for r in providers],
+        'agent_vote_phases': [{'phase': r['phase'], 'count': r['count']} for r in phases],
+        'debate_round_types': [{'round_type': r['round_type'], 'count': r['count']} for r in round_types],
+        'data_coverage': {
+            'predictions': dict(data_coverage) if data_coverage else {},
+            'agent_votes': dict(vote_coverage) if vote_coverage else {},
+        },
+    })

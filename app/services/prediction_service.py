@@ -287,6 +287,10 @@ Return JSON only:
                     'provider': provider_name,
                     'stage': self._provider_stage(provider_name),
                     'model': model or getattr(provider, 'model', 'unknown'),
+                    'raw_response': response.content,
+                    'prompt': prompt,
+                    'usage': getattr(response, 'usage', None) or {},
+                    'response_model': getattr(response, 'model', model) or model,
                 })
                 reports.append(parsed)
                 self._mark_provider_success(provider_name)
@@ -612,6 +616,7 @@ Return your response as JSON:
                 import json
                 import re
                 content = response.content.strip()
+                raw_content = content  # Preserve raw response before parsing
                 if content.startswith('```'):
                     content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
                 
@@ -623,7 +628,11 @@ Return your response as JSON:
                     'model': model or getattr(target_provider, 'model', 'unknown'),
                     'prediction': str(prediction.get('prediction', 'NEUTRAL')).lower(),
                     'confidence': prediction.get('confidence', 0.5),
-                    'reasoning': prediction.get('reasoning', 'No reasoning provided')
+                    'reasoning': prediction.get('reasoning', 'No reasoning provided'),
+                    'raw_response': raw_content,
+                    'prompt': prompt,
+                    'usage': getattr(response, 'usage', None) or {},
+                    'response_model': getattr(response, 'model', model) or model,
                 }
 
             except Exception as e:
@@ -685,6 +694,10 @@ Return JSON only:
                 if not parsed:
                     continue
                 parsed['subagent'] = agent
+                parsed['raw_response'] = response.content
+                parsed['prompt'] = prompt
+                parsed['usage'] = getattr(response, 'usage', None) or {}
+                parsed['response_model'] = getattr(response, 'model', model) or model
                 reports.append(parsed)
             except Exception as e:
                 logger.warning(f'Subagent {agent} failed with {provider_name} for {symbol}: {e}')
