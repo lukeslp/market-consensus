@@ -53,10 +53,19 @@ Overnight light mode uses premium tier by default: `OVERNIGHT_LIGHT_PROVIDER_ORD
 
 **Critical**: All providers use `provider.complete(messages=[Message(...)])` from the bundled `llm_providers/` package. Never call `provider.generate()` — it does not exist.
 
+#### Scheduler Behavior
+
+The worker runs NYSE-aware scheduling, not a simple fixed interval:
+- **Market hours** (09:30–16:00 ET): new cycle every `MARKET_OPEN_INTERVAL_SECONDS` (default 1800 = 30 min)
+- **Overnight**: two refresh cycles at configurable times (`OVERNIGHT_CHECK_TIMES`, default `20:00,06:00` ET)
+- **Overnight light mode**: uses a smaller provider set (`OVERNIGHT_LIGHT_PROVIDER_ORDER`) to reduce cost; every `OVERNIGHT_FULL_DEBATE_EVERY` overnight cycles forces a full-provider run
+- NYSE holidays and early closes are respected if `pandas_market_calendars` is installed; otherwise built-in rules apply
+- `USE_NYSE_CALENDAR=false` disables exchange-aware logic entirely
+
 ### Key Configuration
 
 ```python
-CYCLE_INTERVAL = 30   # seconds — set to 600 for production
+MARKET_OPEN_INTERVAL_SECONDS = 1800  # 30 min during market hours
 MAX_STOCKS = 10       # stocks discovered per cycle
 LOOKBACK_DAYS = 30    # yfinance history window
 ```
