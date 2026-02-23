@@ -132,8 +132,21 @@ Test fixtures (in `tests/conftest.py`):
 - **Duplicate `except` block** in `worker.py:_process_stock()` — lines 325–328 shadow 309–311 with an identical handler; dead code.
 - The worker thread is disabled in `TESTING` mode — do not rely on it in integration tests; trigger cycles manually if needed.
 
+## Frontend (static/)
+
+JavaScript uses 2-space indentation and class-based organization across five modules:
+
+- `app.js` — entry point: SSE connection, cycle/stock routing, button wiring
+- `grid.js` — 50-tile stock grid (D3 v7 enter/update/exit pattern)
+- `detail.js` — price chart for a selected stock
+- `sidebar.js` — provider accuracy leaderboard (D3 SVG bars)
+- `api.js` — REST client helpers
+
+All JS reads from the SSE stream via `EventSource('/api/stream')`; no polling. Oracle Terminal aesthetic uses Cinzel (display), JetBrains Mono (data), amber on near-black.
+
 ## Reusable Patterns
 
 - **LLM calls**: `provider.complete(messages=[Message(role='user', content=prompt)])` — response is a `CompletionResponse` with `.content` str
 - **JSON from LLM**: strip markdown code fences before `json.loads()` (see `generate_prediction()` regex pattern)
 - **Prediction windows**: Crypto = 2.5h, Equities during market = 30min, Equities after hours = 2.5h (see `worker.py` target_time logic)
+- **Coding style**: Python — PEP 8, 4-space indent, `snake_case`/`PascalCase`; JS — 2-space indent, class-based modules
