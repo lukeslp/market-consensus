@@ -92,17 +92,20 @@ Events are emitted automatically by DB methods — do not duplicate by calling t
 
 ```bash
 ./run_tests.sh all                    # All tests
+./run_tests.sh fast                   # All tests except slow (fastest feedback loop)
 ./run_tests.sh unit                   # Unit tests only
 ./run_tests.sh integration            # Integration tests only
 ./run_tests.sh api                    # API endpoint tests
-./run_tests.sh db                     # DB tests (also runs test_db.py)
 ./run_tests.sh coverage               # HTML coverage report → htmlcov/
 ./run_tests.sh file tests/test_foo.py # Single file
 
-# Direct pytest (same venv + PYTHONPATH required)
+# Direct pytest
 pytest tests/test_services.py::TestPredictionService::test_discover_stocks -v
+pytest -m database -v                 # DB tests only (prefer over run_tests.sh db)
 pytest -m "not slow" -v
 ```
+
+Note: `run_tests.sh db` calls a legacy `test_db.py` that may not exist; use `pytest -m database -v` instead.
 
 Test fixtures (in `tests/conftest.py`):
 - `db` — fresh `ConsensusDB` with temp file, tables cleared before/after each test
