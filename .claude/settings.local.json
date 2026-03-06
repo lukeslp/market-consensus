@@ -23,7 +23,8 @@
       "Bash(__NEW_LINE_2e2c33d7b4be6af6__ cd /home/coolhand/projects/blissAPI)",
       "Bash(__NEW_LINE_8a8d56688adeaf2c__ cd /home/coolhand/projects/predictive-keyboard)",
       "Bash(MSG=\"release prep: remove Manus references, fix terminology, update docs\")",
-      "Bash(__NEW_LINE_cf84c44d8a93650c__ cd /home/coolhand/projects/predictive-keyboard)"
+      "Bash(__NEW_LINE_cf84c44d8a93650c__ cd /home/coolhand/projects/predictive-keyboard)",
+      "Bash(# Archive meme generator - move to unified/archive mv /home/coolhand/html/bluesky/inbox/bluesky_meme_generator /home/coolhand/html/bluesky/unified/archive/meme-generator && echo \"\"moved\"\" || echo \"\"failed - checking...\"\" ls /home/coolhand/html/bluesky/inbox/)"
     ]
   },
   "enableAllProjectMcpServers": true,
