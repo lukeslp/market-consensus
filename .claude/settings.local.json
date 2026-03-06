@@ -27,7 +27,8 @@
       "Bash(# Archive meme generator - move to unified/archive mv /home/coolhand/html/bluesky/inbox/bluesky_meme_generator /home/coolhand/html/bluesky/unified/archive/meme-generator && echo \"\"moved\"\" || echo \"\"failed - checking...\"\" ls /home/coolhand/html/bluesky/inbox/)",
       "Bash(/home/coolhand/servers/diachronica/LICENSE:*)",
       "Bash(for repo in geepers-kernel cube-menu-ux hexmind kernel packages)",
-      "Bash(do echo -n \"$repo: \")"
+      "Bash(do echo -n \"$repo: \")",
+      "Bash(__NEW_LINE_1ae9a29418e25370__ cd /home/coolhand/projects/hivemind)"
     ]
   },
   "enableAllProjectMcpServers": true,
