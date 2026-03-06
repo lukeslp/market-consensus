@@ -185,13 +185,13 @@ class Config:
     # Override with env vars like MODEL_OVERRIDE_ANTHROPIC, MODEL_OVERRIDE_XAI, etc.
     MODEL_OVERRIDES = {
         provider: model for provider, model in {
-            'xai': os.environ.get('MODEL_OVERRIDE_XAI'),  # default grok-4-1-fast already cheapest
-            'anthropic': os.environ.get('MODEL_OVERRIDE_ANTHROPIC', 'claude-haiku-4-5-20251001'),
-            'gemini': os.environ.get('MODEL_OVERRIDE_GEMINI'),  # default gemini-2.5-flash already cheap
+            'xai': os.environ.get('MODEL_OVERRIDE_XAI'),  # default grok-4-1-fast-reasoning
+            'anthropic': os.environ.get('MODEL_OVERRIDE_ANTHROPIC', 'claude-sonnet-4-6-20250514'),
+            'gemini': os.environ.get('MODEL_OVERRIDE_GEMINI'),  # default gemini-3.5-flash
             'cohere': os.environ.get('MODEL_OVERRIDE_COHERE', 'command-r-08-2024'),
             'mistral': os.environ.get('MODEL_OVERRIDE_MISTRAL', 'mistral-small-latest'),
             'perplexity': os.environ.get('MODEL_OVERRIDE_PERPLEXITY', 'sonar'),
-            'openai': os.environ.get('MODEL_OVERRIDE_OPENAI', 'gpt-5-mini'),
+            'openai': os.environ.get('MODEL_OVERRIDE_OPENAI', 'gpt-5.4'),
             'huggingface': os.environ.get('MODEL_OVERRIDE_HUGGINGFACE', 'meta-llama/Llama-3.3-70B-Instruct'),
             'ollama': os.environ.get('MODEL_OVERRIDE_OLLAMA', 'glm-5'),
         }.items() if model
