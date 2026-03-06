@@ -1,7 +1,7 @@
 """
 Unified LLM provider abstraction layer.
 
-Supports multiple AI providers with a consistent interface:
+Supports multiple LLM providers with a consistent interface:
 - OpenAI (GPT-4, DALL-E, Vision)
 - Anthropic (Claude, Vision)
 - xAI (Grok, Aurora, Vision)

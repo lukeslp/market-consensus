@@ -1,5 +1,5 @@
 """
-Manus AI provider implementation.
+Manus provider implementation.
 Supports Manus agent profiles with task-based asynchronous processing.
 """
 
