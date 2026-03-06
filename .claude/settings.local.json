@@ -18,7 +18,10 @@
       "mcp__plugin_playwright_playwright__browser_wait_for",
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
       "mcp__plugin_playwright_playwright__browser_run_code",
-      "Bash(PYTHONPATH=. python3:*)"
+      "Bash(PYTHONPATH=. python3:*)",
+      "Bash(MSG=\"release prep: remove Manus references, fix terminology, update docs\" rm -f /home/coolhand/projects/hexplorer-game/.git/index.lock cd /home/coolhand/projects/hexplorer-game)",
+      "Bash(__NEW_LINE_2e2c33d7b4be6af6__ cd /home/coolhand/projects/blissAPI)",
+      "Bash(__NEW_LINE_8a8d56688adeaf2c__ cd /home/coolhand/projects/predictive-keyboard)"
     ]
   },
   "enableAllProjectMcpServers": true,
