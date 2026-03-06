@@ -1,5 +1,5 @@
 """
-Mistral AI provider implementation.
+Mistral provider implementation.
 Supports Mistral models and Pixtral vision models.
 """
 
@@ -11,7 +11,7 @@ import base64
 
 
 class MistralProvider(BaseLLMProvider):
-    """Mistral AI provider."""
+    """Mistral provider."""
 
     DEFAULT_MODEL = "mistral-small-latest"
 
