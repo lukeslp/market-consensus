@@ -17,7 +17,6 @@ Unified LLM provider abstraction layer supporting 10+ providers with a consisten
 - **Perplexity**: Sonar Pro, Vision
 - **Groq**: Fast inference
 - **HuggingFace**: Stable Diffusion, various vision models, Embeddings
-- **Manus**: Agent profiles, Vision
 - **ElevenLabs**: Text-to-Speech
 - **Ollama**: Local LLM inference (Llama, Llava, etc.), Vision via multimodal models, Embeddings
 
@@ -301,7 +300,6 @@ async def test_provider():
 - `perplexity_provider.py`
 - `groq_provider.py` - Fast inference
 - `huggingface_provider.py` - Various models
-- `manus_provider.py` - Agent profiles
 - `elevenlabs_provider.py` - TTS
 - `ollama_provider.py` - Local Ollama LLM server
 - `factory.py` - Provider factory and capabilities
