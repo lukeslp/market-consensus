@@ -12,7 +12,7 @@ import base64
 class HuggingFaceProvider(BaseLLMProvider):
     """Hugging Face provider using Inference API."""
 
-    DEFAULT_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
+    DEFAULT_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 
     def __init__(self, api_key: str = None, model: str = None):
         api_key = api_key or os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_API_KEY") or os.getenv("HF_TOKEN")
