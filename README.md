@@ -8,9 +8,9 @@
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 [![Live](https://img.shields.io/badge/live-dr.eamer.dev%2Fconsensus-amber?style=flat-square)](https://dr.eamer.dev/consensus/)
 
-A stock prediction terminal that runs a staged multi-provider swarm debate on a configurable cycle. Providers debate at discovery, analysis, council voting, and synthesis. Accuracy is measured against actual closing prices and tracked indefinitely.
+### UNFINISHED EXPERIMENT 
 
-**Live:** https://dr.eamer.dev/consensus/
+A LLM stock market prediction board that runs a staged multi-provider swarm debate on a configurable cycle. Providers debate at discovery, analysis, council voting, and synthesis. Accuracy is measured against actual closing prices and tracked indefinitely.
 
 <img width="2616" height="1604" alt="CleanShot 2026-03-06 at 11 44 08@2x" src="https://github.com/user-attachments/assets/9fc6288f-f3c1-4c82-a4cf-fe80acf67698" />
 
