@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Module: llm_providers
 
-Unified LLM provider abstraction layer supporting 10+ AI providers with a consistent interface.
+Unified LLM provider abstraction layer supporting 10+ providers with a consistent interface.
 
 ### Supported Providers
 

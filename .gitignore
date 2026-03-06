@@ -41,6 +41,19 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Agent artifacts
+.aider.*
+CRITIC.md
+ONBOARD.md
+SUGGESTIONS.md
+REPO_AUDIT.md
+*_STATUS.md
+*_PROGRESS.md
+SESSION_LOG.md
+WORK_LOG.md
+AGENT_REPORT.md
+temp_*
+
 # Deprecated files
 app_old.py
 db_old.py
