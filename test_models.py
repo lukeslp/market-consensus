@@ -11,7 +11,7 @@ from llm_providers import ProviderFactory
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-providers = ['xai', 'anthropic', 'gemini', 'cohere', 'mistral', 'perplexity', 'manus']
+providers = ['xai', 'anthropic', 'gemini', 'cohere', 'mistral', 'perplexity']
 
 print("="*60)
 print("FETCHING LIVE MODELS FROM PROVIDERS")
