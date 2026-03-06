@@ -32,9 +32,9 @@ class TestCurrentCycleEndpoint:
     """Test current cycle endpoint"""
 
     def test_current_no_cycles(self, client, db):
-        """Returns 404 when no cycles exist"""
+        """Returns 200 with no_cycles status when no cycles exist"""
         response = client.get('/api/current')
-        assert response.status_code == 404
+        assert response.status_code == 200
         data = json.loads(response.data)
         assert data['status'] == 'no_cycles'
 
