@@ -8,9 +8,9 @@
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 [![Live](https://img.shields.io/badge/live-dr.eamer.dev%2Fconsensus-amber?style=flat-square)](https://dr.eamer.dev/consensus/)
 
-### UNFINISHED EXPERIMENT 
+### Experiment
 
-A LLM stock market prediction board that runs a staged multi-provider swarm debate on a configurable cycle. Providers debate at discovery, analysis, council voting, and synthesis. Accuracy is measured against actual closing prices and tracked indefinitely.
+As an experiment, this system has 8 different language models argue and vote on stock predictions in staged debate rounds. They discover equities, analyze them independently, hold a council vote, then synthesize a final prediction. Every prediction gets checked against real closing prices and the accuracy stats pile up over time — so you can watch the models be confidently wrong together.
 
 <img width="2616" height="1604" alt="CleanShot 2026-03-06 at 11 44 08@2x" src="https://github.com/user-attachments/assets/9fc6288f-f3c1-4c82-a4cf-fe80acf67698" />
 
